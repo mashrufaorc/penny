@@ -18,7 +18,7 @@ export async function POST(req: Request) {
   try {
     const body = BodySchema.parse(await req.json());
     const apiKey = requireEnv("ELEVENLABS_API_KEY");
-    const voiceId = body.voiceId || "21m00Tcm4TlvDq8ikWAM";
+    const voiceId = requireEnv("ELEVENLABS_VOICE_ID");
     const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
 
     const res = await fetch(url, {

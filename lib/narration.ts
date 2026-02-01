@@ -12,7 +12,7 @@ export async function narrate(text: string) {
     const res = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, voiceId: s.voiceId })
+      body: JSON.stringify({ text})
     });
     if (!res.ok) return;
 
