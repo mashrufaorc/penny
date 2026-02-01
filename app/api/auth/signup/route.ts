@@ -8,18 +8,11 @@ export const runtime = "nodejs";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { email, password, name, ageGroup } = body;
+    const { email, password, name } = body;
 
-    if (!email || !password || !name || !ageGroup) {
+    if (!email || !password || !name) {
       return NextResponse.json(
         { error: "Missing required fields" },
-        { status: 400 }
-      );
-    }
-
-    if (!["kid", "teen"].includes(ageGroup)) {
-      return NextResponse.json(
-        { error: "Invalid age group" },
         { status: 400 }
       );
     }
@@ -39,7 +32,6 @@ export async function POST(req: Request) {
     const user = await User.create({
       email,
       name,
-      ageGroup,
       passwordHash,
     });
 

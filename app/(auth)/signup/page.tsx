@@ -9,7 +9,6 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
-  const [ageGroup, setAgeGroup] = useState<"kid" | "teen">("kid");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -26,8 +25,7 @@ export default function SignupPage() {
         body: JSON.stringify({
           email,
           password,
-          name,
-          ageGroup, // "kid" | "teen"
+          name
         }),
       });
 
@@ -82,24 +80,6 @@ export default function SignupPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-
-        {/* Age group toggle */}
-        <div className="flex gap-2 mt-4">
-          <button
-            type="button"
-            onClick={() => setAgeGroup("kid")}
-            className={`penny-btn ${ageGroup === "kid" ? "bg-penny-gold" : "bg-white"}`}
-          >
-            Kid Mode
-          </button>
-          <button
-            type="button"
-            onClick={() => setAgeGroup("teen")}
-            className={`penny-btn ${ageGroup === "teen" ? "bg-penny-gold" : "bg-white"}`}
-          >
-            Teen Mode
-          </button>
-        </div>
 
         {error && (
           <div className="mt-3 text-sm text-red-600">{error}</div>

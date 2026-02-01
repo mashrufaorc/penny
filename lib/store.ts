@@ -5,28 +5,26 @@ import { persist } from "zustand/middleware";
 import type { AccountType, LedgerEntry, MonthSummary, Task } from "./types";
 import { uid, nowMs } from "./utils";
 
-/* ---------------- TYPES ---------------- */
-
 export type UiMode = "kid" | "teen";
 
 type AuthedUser = {
   id: string;
   name?: string | null;
   email?: string | null;
-  ageGroup?: UiMode | null; // <-- comes from backend
+  ageGroup?: UiMode | null; // stored in MongoDB as "kid" | "teen"
 };
 
 type GameState = {
-  /* -------- AUTH / UI -------- */
+  // --- AUTH/UI ---
   user: AuthedUser | null;
-  uiMode: UiMode;
-  authLoaded: boolean;
+  uiMode: UiMode; // derived from user.ageGroup ONLY
   hydrated: boolean;
+  authLoaded: boolean;
 
   bootstrapAuth: () => Promise<void>;
   signOut: () => Promise<void>;
 
-  /* -------- GAME -------- */
+  // --- GAME ---
   profileName: string;
   monthIndex: number;
   monthStartTs: number;
@@ -51,19 +49,13 @@ type GameState = {
     description: string,
     category?: LedgerEntry["category"]
   ) => void;
-
   withdraw: (
     account: AccountType,
     amountCents: number,
     description: string,
     category?: LedgerEntry["category"]
   ) => boolean;
-
-  transfer: (
-    from: AccountType,
-    to: AccountType,
-    amountCents: number
-  ) => boolean;
+  transfer: (from: AccountType, to: AccountType, amountCents: number) => boolean;
 
   upsertTasks: (tasks: Task[]) => void;
   markTask: (taskId: string, status: Task["status"]) => void;
@@ -72,67 +64,65 @@ type GameState = {
   resetAll: () => void;
 };
 
-/* ---------------- CONSTANTS ---------------- */
-
-const MONTH_MS = 1000 * 60 * 5; // 5 min = 1 month
+const MONTH_MS = 1000 * 60 * 5; // 5 minutes per "month"
 
 function initialState() {
   const ts = nowMs();
   return {
-    /* auth */
-    user: null as AuthedUser | null,
-    uiMode: "kid" as UiMode,
-    authLoaded: false,
+    // auth defaults
+    user: null,
+    uiMode: "kid" as UiMode, // temporary until /api/auth/me loads
     hydrated: false,
+    authLoaded: false,
 
-    /* game */
+    // game defaults
     profileName: "Player",
     monthIndex: 1,
     monthStartTs: ts,
     chequingCents: 5000,
     savingsCents: 2000,
-    ledger: [] as LedgerEntry[],
-    tasks: [] as Task[],
-    monthSummaries: [] as MonthSummary[],
+    ledger: [],
+    tasks: [],
+    monthSummaries: [],
     narrationEnabled: true,
     voiceId: "21m00Tcm4TlvDq8ikWAM",
-  };
+  } as any;
 }
-
-/* ---------------- STORE ---------------- */
 
 export const useGameStore = create<GameState>()(
   persist(
     (set, get) => ({
       ...(initialState() as any),
 
-      /* ---------- AUTH ---------- */
-
+      // Called once on app load (TopNav is a good place)
       bootstrapAuth: async () => {
         try {
           const res = await fetch("/api/auth/me", {
             method: "GET",
+            headers: { "Content-Type": "application/json" },
             cache: "no-store",
           });
 
-          const data = await res.json().catch(() => null);
-          const user: AuthedUser | null = data?.user ?? null;
+          if (!res.ok) {
+            set({ user: null, authLoaded: true, uiMode: "kid" });
+            return;
+          }
 
-          const mode: UiMode =
+          const data = await res.json().catch(() => ({} as any));
+          const user = data?.user ?? null;
+
+          // IMPORTANT: uiMode derived ONLY from user.ageGroup
+          const derivedMode: UiMode =
             user?.ageGroup === "teen" ? "teen" : "kid";
 
           set({
             user,
-            uiMode: mode,
+            uiMode: derivedMode,
             profileName: user?.name || get().profileName || "Player",
             authLoaded: true,
           });
         } catch {
-          set({
-            user: null,
-            uiMode: "kid",
-            authLoaded: true,
-          });
+          set({ user: null, authLoaded: true, uiMode: "kid" });
         }
       },
 
@@ -140,31 +130,20 @@ export const useGameStore = create<GameState>()(
         try {
           await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
         } finally {
-          set({
-            user: null,
-            uiMode: "kid",
-            authLoaded: true,
-          });
+          // clear auth and reset to kid visual defaults
+          set({ user: null, authLoaded: true, uiMode: "kid" });
         }
       },
 
-      /* ---------- SETTINGS ---------- */
-
-      setProfileName: (name) =>
-        set({ profileName: name || "Player" }),
-
-      toggleNarration: () =>
-        set({ narrationEnabled: !get().narrationEnabled }),
-
+      setProfileName: (name) => set({ profileName: name || "Player" }),
+      toggleNarration: () => set({ narrationEnabled: !get().narrationEnabled }),
       setVoiceId: (voiceId) => set({ voiceId }),
-
-      /* ---------- MONEY ---------- */
 
       deposit: (account, amountCents, description, category = "income") => {
         amountCents = Math.round(amountCents);
         if (amountCents <= 0) return;
 
-        const entry: LedgerEntry = {
+        const e: LedgerEntry = {
           id: uid("tx"),
           ts: nowMs(),
           description,
@@ -174,7 +153,7 @@ export const useGameStore = create<GameState>()(
         };
 
         set((s) => ({
-          ledger: [entry, ...s.ledger].slice(0, 300),
+          ledger: [e, ...s.ledger].slice(0, 300),
           chequingCents:
             account === "chequing"
               ? s.chequingCents + amountCents
@@ -190,14 +169,11 @@ export const useGameStore = create<GameState>()(
         amountCents = Math.round(amountCents);
         if (amountCents <= 0) return false;
 
-        const balance =
-          account === "chequing"
-            ? get().chequingCents
-            : get().savingsCents;
+        const bal =
+          account === "chequing" ? get().chequingCents : get().savingsCents;
+        if (bal < amountCents) return false;
 
-        if (balance < amountCents) return false;
-
-        const entry: LedgerEntry = {
+        const e: LedgerEntry = {
           id: uid("tx"),
           ts: nowMs(),
           description,
@@ -207,7 +183,7 @@ export const useGameStore = create<GameState>()(
         };
 
         set((s) => ({
-          ledger: [entry, ...s.ledger].slice(0, 300),
+          ledger: [e, ...s.ledger].slice(0, 300),
           chequingCents:
             account === "chequing"
               ? s.chequingCents - amountCents
@@ -223,18 +199,11 @@ export const useGameStore = create<GameState>()(
 
       transfer: (from, to, amountCents) => {
         if (from === to) return false;
-        const ok = get().withdraw(
-          from,
-          amountCents,
-          `Transfer to ${to}`,
-          "transfer"
-        );
+        const ok = get().withdraw(from, amountCents, `Transfer to ${to}`, "transfer");
         if (!ok) return false;
         get().deposit(to, amountCents, `Transfer from ${from}`, "transfer");
         return true;
       },
-
-      /* ---------- TASKS ---------- */
 
       upsertTasks: (tasks) => {
         const existing = new Map(get().tasks.map((t) => [t.id, t]));
@@ -242,88 +211,75 @@ export const useGameStore = create<GameState>()(
 
         for (const t of tasks) {
           if (existing.has(t.id)) {
-            const i = merged.findIndex((x) => x.id === t.id);
-            if (i >= 0) merged[i] = { ...existing.get(t.id)!, ...t };
+            const idx = merged.findIndex((x) => x.id === t.id);
+            if (idx >= 0) merged[idx] = { ...existing.get(t.id)!, ...t };
           } else {
             merged.unshift(t);
           }
         }
 
-        const start = get().monthStartTs;
-        const end = start + MONTH_MS;
-
-        set({
-          tasks: merged
-            .filter((t) => t.createdAt >= start && t.createdAt <= end)
-            .slice(0, 30),
-        });
+        const monthStart = get().monthStartTs;
+        const monthEnd = monthStart + MONTH_MS;
+        const filtered = merged.filter(
+          (t) => t.createdAt >= monthStart && t.createdAt <= monthEnd
+        );
+        set({ tasks: filtered.slice(0, 30) });
       },
 
       markTask: (taskId, status) =>
         set((s) => ({
-          tasks: s.tasks.map((t) =>
-            t.id === taskId ? { ...t, status } : t
-          ),
+          tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, status } : t)),
         })),
-
-      /* ---------- MONTH END ---------- */
 
       closeMonth: () => {
         const s = get();
-        const start = s.monthStartTs;
-        const end = start + MONTH_MS;
+        const monthStart = s.monthStartTs;
+        const monthEnd = monthStart + MONTH_MS;
 
-        const updatedTasks = s.tasks.map((t) =>
+        const tasks = s.tasks.map((t) =>
           t.status === "open" && nowMs() > t.dueAt
             ? { ...t, status: "failed" as const }
             : t
         );
 
-        const rentPaid =
-          updatedTasks.find((t) => t.category === "rent")?.status === "paid";
+        const rent = tasks.find((t) => t.category === "rent");
+        const rentPaid = rent ? rent.status === "paid" : false;
+
+        const tasksPaid = tasks.filter((t) => t.status === "paid").length;
+        const tasksFailed = tasks.filter((t) => t.status === "failed").length;
+
+        const monthLedger = s.ledger.filter(
+          (e) => e.ts >= monthStart && e.ts <= monthEnd
+        );
+        const netCents = monthLedger.reduce((acc, e) => acc + e.amountCents, 0);
 
         const summary: MonthSummary = {
           monthIndex: s.monthIndex,
-          startedAt: start,
-          endedAt: end,
+          startedAt: monthStart,
+          endedAt: monthEnd,
           rentPaid,
-          tasksPaid: updatedTasks.filter((t) => t.status === "paid").length,
-          tasksFailed: updatedTasks.filter((t) => t.status === "failed").length,
-          netCents: s.ledger
-            .filter((e) => e.ts >= start && e.ts <= end)
-            .reduce((a, e) => a + e.amountCents, 0),
+          tasksPaid,
+          tasksFailed,
+          netCents,
         };
 
         set({
-          tasks: updatedTasks,
+          tasks,
           monthSummaries: [summary, ...s.monthSummaries].slice(0, 12),
           monthIndex: s.monthIndex + 1,
           monthStartTs: nowMs(),
         });
       },
 
-      resetAll: () => {
-        const { user, uiMode, authLoaded } = get();
-        set({
-          ...(initialState() as any),
-          user,
-          uiMode,
-          authLoaded,
-          hydrated: true,
-        });
-      },
+      resetAll: () => set(initialState() as any),
     }),
     {
-      name: "penny_store_v1",
-      version: 3,
+      name: "penny_store_v2",
+      version: 2,
 
-      onRehydrateStorage: () => (state) => {
-        if (state) state.hydrated = true;
-      },
-
-      // ❗ do NOT persist auth
+      // DO NOT persist auth/user/uiMode — those come from cookies + Mongo via /api/auth/me
       partialize: (s) => {
-        const { user, authLoaded, ...rest } = s as any;
+        const { user, uiMode, authLoaded, hydrated, ...rest } = s as any;
         return rest;
       },
     }
