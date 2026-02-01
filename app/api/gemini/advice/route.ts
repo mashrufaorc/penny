@@ -1,38 +1,50 @@
 import { NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { z } from "zod";
-
-export const runtime = "nodejs";
-
-const BodySchema = z.object({ situation: z.string().min(1).max(800) });
-
-function requireEnv(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env: ${name}`);
-  return v;
-}
 
 export async function POST(req: Request) {
   try {
-    const body = BodySchema.parse(await req.json());
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "Missing env: GEMINI_API_KEY" },
+        { status: 500 }
+      );
+    }
 
-    const apiKey = requireEnv("GEMINI_API_KEY");
+    const body = await req.json().catch(() => ({}));
+    const { checking = 50, savings = 20, month = 1, recentActivity = [] } = body || {};
+
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+    const model = genAI.getGenerativeModel({ model: modelName });
 
     const prompt = `
-You are a friendly coach for kids/teens learning money.
-Give:
-1) A 1-sentence simple explanation
-2) 3 bullet tips (max 10 words each)
-3) A mini glossary: define 2 terms (one line each)
-Encouraging tone.
-Situation: ${body.situation}
+You are Penny’s kid-friendly money coach.
+Write 3-5 short bullet tips for a child/teen based on their bank summary.
+Keep it simple, positive, and educational. Avoid scary language.
+
+Return PLAIN TEXT only (no JSON, no code blocks).
+
+Month: ${month}
+Checking: $${checking}
+Savings: $${savings}
+Recent Activity (may be empty): ${JSON.stringify(recentActivity).slice(0, 2000)}
 `;
 
-    const r = await model.generateContent(prompt);
-    return NextResponse.json({ text: r.response.text().trim() });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? "Failed" }, { status: 400 });
+    const result = await model.generateContent(prompt);
+    const text = result.response.text() || "";
+
+    // Clean up common Gemini formatting
+    const cleaned = text
+      .replace(/```json/gi, "")
+      .replace(/```/g, "")
+      .trim();
+
+    return NextResponse.json({ advice: cleaned });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: String(err?.message || err) },
+      { status: 500 }
+    );
   }
 }

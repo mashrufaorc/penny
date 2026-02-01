@@ -15,9 +15,12 @@ type AiStatement = {
 };
 
 export default function StatementPage() {
-  const { monthIndex, ledger, tasks, chequingCents, savingsCents, monthSummaries } = useGameStore();
+  const { monthIndex, ledger, tasks, chequingCents, savingsCents, monthSummaries } =
+    useGameStore();
+
   const [ai, setAi] = useState<AiStatement | null>(null);
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const latest = monthSummaries[0];
   const monthLedger = useMemo(() => ledger.slice(0, 30), [ledger]);
@@ -25,6 +28,8 @@ export default function StatementPage() {
   async function gen() {
     setErr("");
     setAi(null);
+    setLoading(true);
+
     try {
       const res = await fetch("/api/gemini/statement", {
         method: "POST",
@@ -32,32 +37,54 @@ export default function StatementPage() {
         body: JSON.stringify({
           monthIndex,
           ledger: monthLedger,
-          tasks: tasks.map((t) => ({ title: t.title, category: t.category, costCents: t.costCents, status: t.status })),
-          balances: { chequingCents, savingsCents }
-        })
+          tasks: tasks.map((t) => ({
+            title: t.title,
+            category: t.category,
+            costCents: t.costCents,
+            status: t.status,
+          })),
+          balances: { chequingCents, savingsCents },
+        }),
       });
 
+      const text = await res.text();
+
       if (!res.ok) {
-        const j = await res.json().catch(() => ({} as any));
-        throw new Error(j?.error ?? "No AI response (set GEMINI_API_KEY).");
+        // Route returns { error }, but if something else happened, show the raw text too
+        let msg = "No AI response (check GEMINI_API_KEY).";
+        try {
+          const j = JSON.parse(text);
+          msg = j?.error ?? msg;
+        } catch {
+          msg = text || msg;
+        }
+        throw new Error(msg);
       }
 
-      const j = (await res.json()) as AiStatement;
+      const j = JSON.parse(text) as AiStatement;
       setAi(j);
+
       narrate(`Your statement is ready. Score: ${j.score} out of 100. ${j.headline}`);
     } catch (e: any) {
       setErr(e?.message ?? "Failed");
+    } finally {
+      setLoading(false);
     }
   }
 
-  useEffect(() => { gen(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => {
+    gen();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div>
       <TopNav />
       <main className="mx-auto max-w-5xl px-4 py-8">
         <h1 className="penny-title">Bank Statement</h1>
-        <p className="penny-subtitle">A kid-friendly summary of your “month” so you learn how statements work.</p>
+        <p className="penny-subtitle">
+          A kid-friendly summary of your “month” so you learn how statements work.
+        </p>
 
         <div className="mt-6 grid md:grid-cols-3 gap-4">
           <div className="penny-card p-5 md:col-span-2">
@@ -66,7 +93,9 @@ export default function StatementPage() {
                 <div className="text-lg font-extrabold">Balances</div>
                 <div className="text-sm text-penny-brown/70">Month #{monthIndex}</div>
               </div>
-              <button className="penny-btn bg-white" onClick={gen}>Regenerate</button>
+              <button className="penny-btn bg-white" onClick={gen} disabled={loading}>
+                {loading ? "Working…" : "Regenerate"}
+              </button>
             </div>
 
             <div className="mt-4 grid md:grid-cols-2 gap-3">
@@ -96,10 +125,19 @@ export default function StatementPage() {
                       <tr key={e.id} className="border-t border-black/5">
                         <td className="p-3">{e.description}</td>
                         <td className="p-3 capitalize">{e.account}</td>
-                        <td className="p-3 text-right font-semibold">{e.amountCents < 0 ? "-" : ""}{fmtMoney(Math.abs(e.amountCents))}</td>
+                        <td className="p-3 text-right font-semibold">
+                          {e.amountCents < 0 ? "-" : ""}
+                          {fmtMoney(Math.abs(e.amountCents))}
+                        </td>
                       </tr>
                     ))}
-                    {monthLedger.length === 0 ? <tr><td className="p-3 text-penny-brown/70" colSpan={3}>No transactions yet.</td></tr> : null}
+                    {monthLedger.length === 0 ? (
+                      <tr>
+                        <td className="p-3 text-penny-brown/70" colSpan={3}>
+                          No transactions yet.
+                        </td>
+                      </tr>
+                    ) : null}
                   </tbody>
                 </table>
               </div>
@@ -109,7 +147,10 @@ export default function StatementPage() {
               <div className="mt-6 p-4 rounded-xl2 bg-white border border-black/5">
                 <div className="font-extrabold">Last month snapshot</div>
                 <div className="mt-2 text-sm text-penny-brown/80">
-                  Rent paid: <span className="font-bold">{latest.rentPaid ? "Yes ✅" : "No ❌"}</span> • Tasks paid: <span className="font-bold">{latest.tasksPaid}</span> • Tasks missed: <span className="font-bold">{latest.tasksFailed}</span>
+                  Rent paid:{" "}
+                  <span className="font-bold">{latest.rentPaid ? "Yes ✅" : "No ❌"}</span>{" "}
+                  • Tasks paid: <span className="font-bold">{latest.tasksPaid}</span> •
+                  Tasks missed: <span className="font-bold">{latest.tasksFailed}</span>
                 </div>
               </div>
             ) : null}
@@ -122,11 +163,17 @@ export default function StatementPage() {
             {err ? (
               <div className="mt-3 p-3 rounded-xl2 bg-red-50 border border-red-200 text-sm">
                 {err}
-                <div className="mt-2 text-xs text-penny-brown/60">Set <span className="font-mono">GEMINI_API_KEY</span> in <span className="font-mono">.env.local</span>.</div>
+                <div className="mt-2 text-xs text-penny-brown/60">
+                  Ensure <span className="font-mono">GEMINI_API_KEY</span> is in{" "}
+                  <span className="font-mono">.env.local</span>, then restart{" "}
+                  <span className="font-mono">npm run dev</span>.
+                </div>
               </div>
             ) : null}
 
-            {!ai && !err ? <div className="mt-3 text-sm text-penny-brown/70">Generating…</div> : null}
+            {!ai && !err ? (
+              <div className="mt-3 text-sm text-penny-brown/70">Generating…</div>
+            ) : null}
 
             {ai ? (
               <div className="mt-3">
@@ -138,22 +185,32 @@ export default function StatementPage() {
 
                 <div className="mt-4">
                   <div className="font-extrabold">What went well</div>
-                  <ul className="list-disc pl-5 text-sm text-penny-brown/80 mt-2 space-y-1">{ai.whatWentWell.map((x, i) => <li key={i}>{x}</li>)}</ul>
+                  <ul className="list-disc pl-5 text-sm text-penny-brown/80 mt-2 space-y-1">
+                    {ai.whatWentWell.map((x, i) => (
+                      <li key={i}>{x}</li>
+                    ))}
+                  </ul>
                 </div>
 
                 <div className="mt-4">
                   <div className="font-extrabold">What to improve</div>
-                  <ul className="list-disc pl-5 text-sm text-penny-brown/80 mt-2 space-y-1">{ai.whatToImprove.map((x, i) => <li key={i}>{x}</li>)}</ul>
+                  <ul className="list-disc pl-5 text-sm text-penny-brown/80 mt-2 space-y-1">
+                    {ai.whatToImprove.map((x, i) => (
+                      <li key={i}>{x}</li>
+                    ))}
+                  </ul>
                 </div>
 
                 <div className="mt-4">
                   <div className="font-extrabold">Terms learned</div>
-                  <div className="mt-2 space-y-2">{ai.termsLearned.map((t, i) => (
-                    <div key={i} className="p-3 rounded-xl2 bg-white border border-black/5">
-                      <div className="font-extrabold">{t.term}</div>
-                      <div className="text-sm text-penny-brown/80">{t.meaning}</div>
-                    </div>
-                  ))}</div>
+                  <div className="mt-2 space-y-2">
+                    {ai.termsLearned.map((t, i) => (
+                      <div key={i} className="p-3 rounded-xl2 bg-white border border-black/5">
+                        <div className="font-extrabold">{t.term}</div>
+                        <div className="text-sm text-penny-brown/80">{t.meaning}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             ) : null}
