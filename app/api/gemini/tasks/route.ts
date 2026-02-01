@@ -5,11 +5,33 @@ import { uid } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
+/* -------------------- Validation -------------------- */
+
 const BodySchema = z.object({
   monthIndex: z.number().int().min(1).max(999),
-  difficulty: z.enum(["easy","medium","hard"]).default("easy"),
-  profileName: z.string().optional()
+  difficulty: z.enum(["easy", "medium", "hard"]).default("easy"),
 });
+
+const CategorySchema = z.enum([
+  "rent",
+  "food",
+  "home",
+  "furniture",
+  "transport",
+  "fun",
+  "bill",
+]);
+
+const GeminiTaskSchema = z.object({
+  title: z.string(),
+  category: CategorySchema,
+  costCents: z.number().int(),
+  minutesToDue: z.number().int().min(1).max(4),
+  prompt: z.string(),
+  hint: z.string(),
+});
+
+/* -------------------- Helpers -------------------- */
 
 function requireEnv(name: string) {
   const v = process.env[name];
@@ -17,47 +39,107 @@ function requireEnv(name: string) {
   return v;
 }
 
+// Gemini 2.5 often wraps JSON or adds commentary
+function extractJsonArray(text: string) {
+  const cleaned = text
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .trim();
+
+  const start = cleaned.indexOf("[");
+  const end = cleaned.lastIndexOf("]");
+  if (start === -1 || end === -1) {
+    throw new Error("Gemini did not return a JSON array");
+  }
+
+  return JSON.parse(cleaned.slice(start, end + 1));
+}
+
+function costRange(diff: "easy" | "medium" | "hard") {
+  if (diff === "easy") return [300, 2500];
+  if (diff === "medium") return [600, 4000];
+  return [1000, 7000];
+}
+
+/* -------------------- Route -------------------- */
+
 export async function POST(req: Request) {
   try {
     const body = BodySchema.parse(await req.json());
+    const [minCost, maxCost] = costRange(body.difficulty);
 
-    const apiKey = requireEnv("GEMINI_API_KEY");
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+    const genAI = new GoogleGenerativeAI(requireEnv("GEMINI_API_KEY"));
+
+    // ✅ Correct Gemini 2.5 model
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.5-flash",
+    });
 
     const prompt = `
-You are generating "life expenses" tasks for a kid-friendly finance game called Penny.
+Generate tasks for a kid-friendly finance game called Penny.
+
+STRICT RULES:
+- Output JSON ONLY
+- Output MUST be a JSON ARRAY
+- No markdown
+- No explanation text
+
+Generate EXACTLY 5 tasks.
+
 Rules:
-- Output MUST be valid JSON ONLY (no markdown).
-- Generate 5 tasks.
-- Exactly one task MUST be category "rent" and must be the most important.
+- Exactly ONE task must be category "rent"
 - Categories allowed: rent, food, home, furniture, transport, fun, bill
-- Each task must include: title (short), category, costCents (integer), minutesToDue (integer 1..4), prompt (kid-friendly scenario), hint (one sentence).
-- Keep language for kids/teens, positive.
-- Costs should fit: easy: 300..2500 cents, medium: 600..4000, hard: 1000..7000.
-- Rent should be among higher costs.
-- Include one financial term per task (budget, interest, fee, balance, statement).
-Context: monthIndex=${body.monthIndex}, difficulty=${body.difficulty}.
-`;
+- costCents must be between ${minCost} and ${maxCost}
+- Rent should be one of the highest costs
+- minutesToDue must be between 1 and 4
 
-    const r = await model.generateContent(prompt);
-    const text = r.response.text().trim();
-    const parsed = JSON.parse(text) as any[];
+Each task must include:
+title, category, costCents, minutesToDue, prompt, hint
 
-    const tasks = parsed.map((t) => ({
+Language: positive, kid-friendly
+Include one finance term per task (budget, balance, fee, interest, statement)
+
+Return JSON array only.
+`.trim();
+
+    const result = await model.generateContent(prompt);
+    const rawText = result.response.text();
+
+    const rawTasks = extractJsonArray(rawText);
+    const parsedTasks = z
+      .array(GeminiTaskSchema)
+      .length(5)
+      .parse(rawTasks);
+
+    const now = Date.now();
+
+    const tasks = parsedTasks.map((t) => ({
       id: uid("task"),
-      title: String(t.title).slice(0, 60),
-      category: String(t.category),
-      costCents: Number(t.costCents),
-      dueAt: Date.now() + Number(t.minutesToDue) * 60_000,
-      prompt: String(t.prompt).slice(0, 240),
-      hint: String(t.hint).slice(0, 140),
+      title: t.title.slice(0, 60),
+      category: t.category,
+      costCents: t.costCents,
+      dueAt: now + t.minutesToDue * 60_000,
+      prompt: t.prompt.slice(0, 240),
+      hint: t.hint.slice(0, 140),
       status: "open" as const,
-      createdAt: Date.now()
+      createdAt: now,
     }));
 
+    // Safety check: enforce exactly 1 rent
+    const rentCount = tasks.filter((t) => t.category === "rent").length;
+    if (rentCount !== 1) {
+      tasks[0].category = "rent";
+      for (let i = 1; i < tasks.length; i++) {
+        if (tasks[i].category === "rent") tasks[i].category = "bill";
+      }
+    }
+
     return NextResponse.json({ tasks });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? "Failed to generate tasks" }, { status: 400 });
+  } catch (err: any) {
+    console.error("Gemini 2.5 task error:", err);
+    return NextResponse.json(
+      { error: err?.message ?? "Task generation failed" },
+      { status: 500 }
+    );
   }
 }

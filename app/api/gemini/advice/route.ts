@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { z } from "zod";
 
 export const runtime = "nodejs";
 
 const BodySchema = z.object({
-  context: z.string().min(1).max(4000), // keep it simple: pass a short summary string
-  mode: z.enum(["kid", "teen"]).default("kid"),
+  context: z.string().min(1).max(4000),
 });
 
 function requireEnv(name: string) {
@@ -15,46 +14,49 @@ function requireEnv(name: string) {
   return v;
 }
 
-function stripFences(s: string) {
-  return s
-    .replace(/^\s*```(?:json)?\s*/i, "")
-    .replace(/\s*```\s*$/i, "")
+// Gemini sometimes returns ``` fences or extra formatting
+function cleanText(text: string) {
+  return (text || "")
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
     .trim();
 }
 
 export async function POST(req: Request) {
   try {
-    const apiKey = requireEnv("GEMINI_API_KEY");
-    const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-
     const body = BodySchema.parse(await req.json());
 
-    const ai = new GoogleGenAI({ apiKey });
+    const apiKey = requireEnv("GEMINI_API_KEY");
+    const genAI = new GoogleGenerativeAI(apiKey);
+
+    // ✅ Gemini 2.5 model
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     const prompt = `
-You are Penny’s friendly money coach.
-Give 3–5 short bullet tips for ${body.mode === "kid" ? "a child" : "a teenager"}.
+You are Penny’s friendly money coach for a financial literacy game.
 
+Write 3–5 SHORT bullet tips that help the player decide what to do next.
 Rules:
-- Be positive, not scary.
-- Use simple money words (budget, rent, savings, needs vs wants).
-- Keep it short.
-- PLAIN TEXT only. No JSON. No code blocks.
+- Positive, not scary
+- Use simple money words: budget, balance, rent, savings, needs vs wants, fee
+- Suggest an action when possible (example: transfer from savings, pay rent first)
+- PLAIN TEXT only (no JSON, no markdown code blocks)
 
 Context:
 ${body.context}
 `.trim();
 
-    const resp = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: { temperature: 0.7 },
-    });
+    const result = await model.generateContent(prompt);
+    const text = cleanText(result.response.text());
 
-    const text = stripFences((resp.text ?? "").trim());
+    const advice =
+      text.length > 0
+        ? text
+        : "• Pay needs first (rent/food)\n• Check your balance before spending\n• Save a little before buying wants";
 
-    return NextResponse.json({ advice: text });
+    return NextResponse.json({ advice });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? "Failed" }, { status: 400 });
+    console.error("Gemini advice error:", e);
+    return NextResponse.json({ error: e?.message ?? "Failed" }, { status: 500 });
   }
 }

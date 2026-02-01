@@ -724,35 +724,52 @@ export default function Game() {
   }
 
   async function askCoach() {
-    if (!selectedTask) return;
-    setCoachLoading(true);
-    setCoachModalOpen(true);
-    setCoachText("");
+  if (!selectedTask) return;
 
+  setCoachLoading(true);
+  setCoachModalOpen(true);
+  setCoachText("");
+
+  try {
+    const context = `
+Task: ${selectedTask.title}
+Category: ${selectedTask.category}
+Cost: $${(selectedTask.costCents / 100).toFixed(2)}
+Hint: ${selectedTask.hint}
+
+Balances:
+Chequing: $${(chequingCents / 100).toFixed(2)}
+Savings: $${(savingsCents / 100).toFixed(2)}
+
+What should I do next to pay this on time? Teach 1-2 terms.
+`.trim();
+
+    const res = await fetch("/api/gemini/advice", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ context }),
+    });
+
+    const text = await res.text();
+
+    let j: any;
     try {
-      const res = await fetch("/api/gemini/advice", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          situation: `Task: ${selectedTask.title}. Cost: ${(selectedTask.costCents / 100).toFixed(2)} dollars. Hint: ${selectedTask.hint}.
-My balances: chequing ${(cheqRef.current / 100).toFixed(2)}, savings ${(savRef.current / 100).toFixed(2)}.
-Explain what I should do and teach simple money terms.`,
-        }),
-      });
-
-      if (!res.ok) throw new Error("AI coach unavailable (set GEMINI_API_KEY).");
-      const j = await res.json();
-
-      // Support either { text } or { advice }
-      const msg = (j?.text || j?.advice || "").toString().trim();
-      setCoachText(msg || "Coach had no response.");
-      narrate("Here's a tip from your money coach.");
-    } catch (e: any) {
-      setCoachText(e?.message ?? "Coach unavailable.");
-    } finally {
-      setCoachLoading(false);
+      j = JSON.parse(text);
+    } catch {
+      throw new Error(text || "Server returned an invalid response.");
     }
+
+    if (!res.ok) throw new Error(j?.error || "AI coach unavailable.");
+
+    setCoachText(j.advice || "No advice returned.");
+    narrate("Here's a tip from your money coach.");
+  } catch (e: any) {
+    setCoachText(e?.message ?? "Coach unavailable.");
+  } finally {
+    setCoachLoading(false);
   }
+}
+
 
   const openTasks = tasks
     .filter((t) => t.status === "open")
