@@ -34,10 +34,18 @@ export default function StatementPage() {
       const res = await fetch("/api/gemini/statement", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        // IMPORTANT: route.ts expects ledger items with ts/description/amountCents/account/category
         body: JSON.stringify({
           monthIndex,
-          ledger: monthLedger,
-          tasks: tasks.map((t) => ({
+          ledger: monthLedger.map((e: any) => ({
+            ts: e.ts ?? Date.now(),
+            description: e.description ?? "",
+            amountCents: e.amountCents ?? 0,
+            account: e.account ?? "chequing",
+            category: e.category ?? "general",
+            id: e.id,
+          })),
+          tasks: tasks.map((t: any) => ({
             title: t.title,
             category: t.category,
             costCents: t.costCents,
@@ -50,7 +58,6 @@ export default function StatementPage() {
       const text = await res.text();
 
       if (!res.ok) {
-        // Route returns { error }, but if something else happened, show the raw text too
         let msg = "No AI response (check GEMINI_API_KEY).";
         try {
           const j = JSON.parse(text);
@@ -72,8 +79,47 @@ export default function StatementPage() {
     }
   }
 
+  async function loadExistingOrGenerate() {
+    setErr("");
+    setLoading(true);
+
+    try {
+      // Try MongoDB first
+      const existingRes = await fetch(`/api/statements/month/${monthIndex}`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+      });
+
+      // If unauthorized, show error and stop (user must login)
+      if (existingRes.status === 401) {
+        const t = await existingRes.text();
+        let msg = "Unauthorized. Please log in again.";
+        try {
+          msg = JSON.parse(t)?.error ?? msg;
+        } catch {}
+        throw new Error(msg);
+      }
+
+      if (existingRes.ok) {
+        const existing = await existingRes.json().catch(() => ({} as any));
+        if (existing?.statement?.ai) {
+          setAi(existing.statement.ai as AiStatement);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Not found or no ai saved -> generate
+      await gen();
+    } catch (e: any) {
+      setErr(e?.message ?? "Failed");
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
-    gen();
+    loadExistingOrGenerate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -93,9 +139,26 @@ export default function StatementPage() {
                 <div className="text-lg font-extrabold">Balances</div>
                 <div className="text-sm text-penny-brown/70">Month #{monthIndex}</div>
               </div>
-              <button className="penny-btn bg-white" onClick={gen} disabled={loading}>
-                {loading ? "Working…" : "Regenerate"}
-              </button>
+
+              <div className="flex gap-2">
+                <button
+                  className="penny-btn bg-white"
+                  onClick={loadExistingOrGenerate}
+                  disabled={loading}
+                  title="Load saved statement (or generate if missing)"
+                >
+                  {loading ? "Working…" : "Load"}
+                </button>
+
+                <button
+                  className="penny-btn bg-white"
+                  onClick={gen}
+                  disabled={loading}
+                  title="Force a fresh AI statement (and overwrite saved one)"
+                >
+                  {loading ? "Working…" : "Regenerate"}
+                </button>
+              </div>
             </div>
 
             <div className="mt-4 grid md:grid-cols-2 gap-3">
@@ -121,8 +184,8 @@ export default function StatementPage() {
                     </tr>
                   </thead>
                   <tbody className="bg-white/70">
-                    {monthLedger.map((e) => (
-                      <tr key={e.id} className="border-t border-black/5">
+                    {monthLedger.map((e: any) => (
+                      <tr key={e.id ?? `${e.ts}-${e.description}`} className="border-t border-black/5">
                         <td className="p-3">{e.description}</td>
                         <td className="p-3 capitalize">{e.account}</td>
                         <td className="p-3 text-right font-semibold">
@@ -164,15 +227,18 @@ export default function StatementPage() {
               <div className="mt-3 p-3 rounded-xl2 bg-red-50 border border-red-200 text-sm">
                 {err}
                 <div className="mt-2 text-xs text-penny-brown/60">
-                  Ensure <span className="font-mono">GEMINI_API_KEY</span> is in{" "}
-                  <span className="font-mono">.env.local</span>, then restart{" "}
+                  If this says Unauthorized, login again. If it says missing key, set{" "}
+                  <span className="font-mono">GEMINI_API_KEY</span> in{" "}
+                  <span className="font-mono">.env.local</span> and restart{" "}
                   <span className="font-mono">npm run dev</span>.
                 </div>
               </div>
             ) : null}
 
             {!ai && !err ? (
-              <div className="mt-3 text-sm text-penny-brown/70">Generating…</div>
+              <div className="mt-3 text-sm text-penny-brown/70">
+                {loading ? "Loading…" : "No statement yet."}
+              </div>
             ) : null}
 
             {ai ? (

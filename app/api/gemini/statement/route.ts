@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
-import { GoogleGenAI } from "@google/genai";
+import { cookies } from "next/headers";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
+import { verifySession } from "@/lib/auth";
+import { dbConnect } from "@/lib/db";
+import { Statement } from "@/models/Statement";
 
 export const runtime = "nodejs";
 
@@ -14,7 +17,8 @@ const BodySchema = z.object({
         description: z.string(),
         amountCents: z.number(),
         account: z.enum(["chequing", "savings"]),
-        category: z.string(),
+        category: z.string().optional().default("general"),
+        id: z.string().optional(),
       })
     )
     .max(300),
@@ -27,7 +31,7 @@ const BodySchema = z.object({
         status: z.string(),
       })
     )
-    .max(80),
+    .max(60),
   balances: z.object({
     chequingCents: z.number(),
     savingsCents: z.number(),
@@ -51,15 +55,27 @@ function requireEnv(name: string) {
   return v;
 }
 
-// Small helper in case Gemini ever returns extra whitespace
+/**
+ * Gemini sometimes returns:
+ * - pure JSON
+ * - JSON wrapped in ```json ... ```
+ * - JSON with a little extra text
+ * This extracts the first {...} block and parses safely.
+ */
 function safeJsonParse(text: string) {
+  const cleaned = (text ?? "")
+    .trim()
+    .replace(/^\s*```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/i, "")
+    .trim();
+
   try {
-    return JSON.parse(text);
+    return JSON.parse(cleaned);
   } catch {
-    const first = text.indexOf("{");
-    const last = text.lastIndexOf("}");
+    const first = cleaned.indexOf("{");
+    const last = cleaned.lastIndexOf("}");
     if (first >= 0 && last > first) {
-      return JSON.parse(text.slice(first, last + 1));
+      return JSON.parse(cleaned.slice(first, last + 1));
     }
     throw new Error("AI returned non-JSON output.");
   }
@@ -67,47 +83,73 @@ function safeJsonParse(text: string) {
 
 export async function POST(req: Request) {
   try {
+    // 1) Auth
+    const token = cookies().get("penny_session")?.value;
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { uid } = await verifySession(token);
+
+    // 2) Validate request body
     const body = BodySchema.parse(await req.json());
 
+    // 3) Gemini
     const apiKey = requireEnv("GEMINI_API_KEY");
-    const ai = new GoogleGenAI({ apiKey });
+    const genAI = new GoogleGenerativeAI(apiKey);
 
-    const compactLedger = body.ledger.slice(0, 60);
+    // Use a known valid model for @google/generative-ai SDK
+    const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+    const model = genAI.getGenerativeModel({ model: modelName });
 
     const prompt = `
-You are a kid-friendly financial coach for a game.
-Write a helpful monthly bank-statement summary based on the data.
-Be encouraging, clear, and specific.
+Return JSON ONLY (no markdown, no backticks). Must match:
+{
+  "headline": string,
+  "whatWentWell": string[],
+  "whatToImprove": string[],
+  "termsLearned": [{"term": string, "meaning": string}],
+  "score": number
+}
 
-Focus on:
-- rent + essential bills
-- spending vs saving
-- missed tasks / late payments
-- simple next steps
+Make it kid-friendly and encouraging.
+Focus on: budgeting, rent/needs vs wants, saving, deadlines, and smart choices.
+Be specific using the data.
 
-Return JSON that matches the provided schema.
-
-Data:
+DATA:
 monthIndex=${body.monthIndex}
 balances=${JSON.stringify(body.balances)}
-tasks=${JSON.stringify(body.tasks)}
-ledger(sample)=${JSON.stringify(compactLedger)}
+tasks=${JSON.stringify(body.tasks.slice(0, 40))}
+ledger=${JSON.stringify(body.ledger.slice(0, 60))}
 `.trim();
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseJsonSchema: zodToJsonSchema(AiStatementSchema),
-      },
-    });
+    const r = await model.generateContent(prompt);
+    const text = r.response.text()?.trim() || "";
 
-    const text = (response.text ?? "").trim();
     const parsed = safeJsonParse(text);
-    const validated = AiStatementSchema.parse(parsed);
+    const ai = AiStatementSchema.parse(parsed);
 
-    return NextResponse.json(validated);
+    // 4) MongoDB Atlas save (upsert)
+    await dbConnect();
+
+    await Statement.updateOne(
+      { userId: uid, monthIndex: body.monthIndex },
+      {
+        $set: {
+          userId: uid,
+          monthIndex: body.monthIndex,
+          balances: body.balances,
+          ledgerPreview: body.ledger.slice(0, 80),
+          tasksPreview: body.tasks.slice(0, 50),
+          ai,
+          updatedAt: new Date(),
+        },
+      },
+      { upsert: true }
+    );
+
+    // 5) Return AI statement to client
+    return NextResponse.json(ai);
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message ?? "Failed" },
