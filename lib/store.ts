@@ -5,19 +5,16 @@ import { persist } from "zustand/middleware";
 import type { AccountType, LedgerEntry, MonthSummary, Task } from "./types";
 import { uid, nowMs } from "./utils";
 
-export type UiMode = "kid" | "teen";
-
 type AuthedUser = {
   id: string;
   name?: string | null;
   email?: string | null;
-  ageGroup?: UiMode | null; // stored in MongoDB as "kid" | "teen"
+  ageGroup?: string | null; // keep if your /api/auth/me returns it, but we won't use it in UI
 };
 
 type GameState = {
-  // --- AUTH/UI ---
+  // --- AUTH ---
   user: AuthedUser | null;
-  uiMode: UiMode; // derived from user.ageGroup ONLY
   hydrated: boolean;
   authLoaded: boolean;
 
@@ -39,6 +36,11 @@ type GameState = {
   narrationEnabled: boolean;
   voiceId: string;
 
+  // --- MONTH SYSTEM ---
+  lastSpawnedMonthIndex: number; // prevents spawning tasks twice in same month
+  spawnMonthlyTasks: () => void;
+  tickMonth: () => void; // call every 1s from /play
+
   setProfileName: (name: string) => void;
   toggleNarration: () => void;
   setVoiceId: (voiceId: string) => void;
@@ -49,12 +51,14 @@ type GameState = {
     description: string,
     category?: LedgerEntry["category"]
   ) => void;
+
   withdraw: (
     account: AccountType,
     amountCents: number,
     description: string,
     category?: LedgerEntry["category"]
   ) => boolean;
+
   transfer: (from: AccountType, to: AccountType, amountCents: number) => boolean;
 
   upsertTasks: (tasks: Task[]) => void;
@@ -66,12 +70,76 @@ type GameState = {
 
 const MONTH_MS = 1000 * 60 * 5; // 5 minutes per "month"
 
+// Helper: build a predictable, kid-friendly task list.
+// Later you can swap to Gemini-generated tasks; this is stable for hackathon.
+function buildMonthlyTasks(monthStartTs: number): Task[] {
+  const dueAt = monthStartTs + MONTH_MS;
+
+  // NOTE: uses your Task shape: id, title, category, costCents, status, createdAt, dueAt
+  return [
+    {
+      id: uid("task"),
+      title: "Pay Rent",
+      category: "rent",
+      costCents: 2500,
+      status: "open",
+      createdAt: monthStartTs,
+      dueAt,
+      prompt: "",
+      hint: ""
+    },
+    {
+      id: uid("task"),
+      title: "Groceries (Food)",
+      category: "food",
+      costCents: 900,
+      status: "open",
+      createdAt: monthStartTs,
+      dueAt,
+      prompt: "",
+      hint: ""
+    },
+    {
+      id: uid("task"),
+      title: "Transit / Gas",
+      category: "transport",
+      costCents: 450,
+      status: "open",
+      createdAt: monthStartTs,
+      dueAt,
+      prompt: "",
+      hint: ""
+    },
+    {
+      id: uid("task"),
+      title: "Phone / Internet Bill",
+      category: "bills",
+      costCents: 600,
+      status: "open",
+      createdAt: monthStartTs,
+      dueAt,
+      prompt: "",
+      hint: ""
+    },
+    {
+      id: uid("task"),
+      title: "Fun Purchase (Wants)",
+      category: "wants",
+      costCents: 500,
+      status: "open",
+      createdAt: monthStartTs,
+      dueAt,
+      prompt: "",
+      hint: ""
+    },
+  ];
+}
+
 function initialState() {
   const ts = nowMs();
   return {
     // auth defaults
     user: null,
-    uiMode: "kid" as UiMode, // temporary until /api/auth/me loads
     hydrated: false,
     authLoaded: false,
 
@@ -85,7 +153,10 @@ function initialState() {
     tasks: [],
     monthSummaries: [],
     narrationEnabled: true,
-    voiceId: "21m00Tcm4TlvDq8ikWAM",
+    voiceId: "SOYHLrjzK2X1ezoPC6cr",
+
+    // month system defaults
+    lastSpawnedMonthIndex: 0,
   } as any;
 }
 
@@ -94,7 +165,9 @@ export const useGameStore = create<GameState>()(
     (set, get) => ({
       ...(initialState() as any),
 
-      // Called once on app load (TopNav is a good place)
+      // -------------------
+      // AUTH
+      // -------------------
       bootstrapAuth: async () => {
         try {
           const res = await fetch("/api/auth/me", {
@@ -104,25 +177,20 @@ export const useGameStore = create<GameState>()(
           });
 
           if (!res.ok) {
-            set({ user: null, authLoaded: true, uiMode: "kid" });
+            set({ user: null, authLoaded: true });
             return;
           }
 
           const data = await res.json().catch(() => ({} as any));
           const user = data?.user ?? null;
 
-          // IMPORTANT: uiMode derived ONLY from user.ageGroup
-          const derivedMode: UiMode =
-            user?.ageGroup === "teen" ? "teen" : "kid";
-
           set({
             user,
-            uiMode: derivedMode,
             profileName: user?.name || get().profileName || "Player",
             authLoaded: true,
           });
         } catch {
-          set({ user: null, authLoaded: true, uiMode: "kid" });
+          set({ user: null, authLoaded: true });
         }
       },
 
@@ -130,11 +198,57 @@ export const useGameStore = create<GameState>()(
         try {
           await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
         } finally {
-          // clear auth and reset to kid visual defaults
-          set({ user: null, authLoaded: true, uiMode: "kid" });
+          set({ user: null, authLoaded: true });
         }
       },
 
+      // -------------------
+      // MONTH SYSTEM
+      // -------------------
+      spawnMonthlyTasks: () => {
+        const s = get();
+        if (s.lastSpawnedMonthIndex === s.monthIndex) return; // already spawned this month
+        const tasks = buildMonthlyTasks(s.monthStartTs);
+        set({
+          tasks,
+          lastSpawnedMonthIndex: s.monthIndex,
+        });
+      },
+
+      // Call every 1s in Play page.
+      // Ensures tasks exist, fails overdue tasks, closes month when timer ends.
+      tickMonth: () => {
+        const s = get();
+        const now = nowMs();
+        const monthEnd = s.monthStartTs + MONTH_MS;
+
+        // 1) Spawn tasks once per month (on first tick of that month)
+        if (s.lastSpawnedMonthIndex !== s.monthIndex) {
+          get().spawnMonthlyTasks();
+          return;
+        }
+
+        // 2) Fail tasks that missed dueAt
+        const updatedTasks = s.tasks.map((t) => {
+          if (t.status === "open" && now > t.dueAt) return { ...t, status: "failed" as const };
+          return t;
+        });
+
+        // 3) If month time is up, close month automatically
+        if (now >= monthEnd) {
+          set({ tasks: updatedTasks });
+          get().closeMonth(); // monthIndex++, monthStartTs resets
+          return;
+        }
+
+        // Save if anything changed
+        const changed = updatedTasks.some((t, i) => t.status !== s.tasks[i]?.status);
+        if (changed) set({ tasks: updatedTasks });
+      },
+
+      // -------------------
+      // GAME ACTIONS
+      // -------------------
       setProfileName: (name) => set({ profileName: name || "Player" }),
       toggleNarration: () => set({ narrationEnabled: !get().narrationEnabled }),
       setVoiceId: (voiceId) => set({ voiceId }),
@@ -155,13 +269,9 @@ export const useGameStore = create<GameState>()(
         set((s) => ({
           ledger: [e, ...s.ledger].slice(0, 300),
           chequingCents:
-            account === "chequing"
-              ? s.chequingCents + amountCents
-              : s.chequingCents,
+            account === "chequing" ? s.chequingCents + amountCents : s.chequingCents,
           savingsCents:
-            account === "savings"
-              ? s.savingsCents + amountCents
-              : s.savingsCents,
+            account === "savings" ? s.savingsCents + amountCents : s.savingsCents,
         }));
       },
 
@@ -185,13 +295,9 @@ export const useGameStore = create<GameState>()(
         set((s) => ({
           ledger: [e, ...s.ledger].slice(0, 300),
           chequingCents:
-            account === "chequing"
-              ? s.chequingCents - amountCents
-              : s.chequingCents,
+            account === "chequing" ? s.chequingCents - amountCents : s.chequingCents,
           savingsCents:
-            account === "savings"
-              ? s.savingsCents - amountCents
-              : s.savingsCents,
+            account === "savings" ? s.savingsCents - amountCents : s.savingsCents,
         }));
 
         return true;
@@ -205,6 +311,7 @@ export const useGameStore = create<GameState>()(
         return true;
       },
 
+      // keep your existing merge behavior (still fine)
       upsertTasks: (tasks) => {
         const existing = new Map(get().tasks.map((t) => [t.id, t]));
         const merged: Task[] = [...get().tasks];
@@ -268,6 +375,8 @@ export const useGameStore = create<GameState>()(
           monthSummaries: [summary, ...s.monthSummaries].slice(0, 12),
           monthIndex: s.monthIndex + 1,
           monthStartTs: nowMs(),
+          // IMPORTANT: do NOT set lastSpawnedMonthIndex here.
+          // Next tickMonth() will spawn the new month's tasks.
         });
       },
 
@@ -275,11 +384,11 @@ export const useGameStore = create<GameState>()(
     }),
     {
       name: "penny_store_v2",
-      version: 2,
+      version: 3,
 
-      // DO NOT persist auth/user/uiMode — those come from cookies + Mongo via /api/auth/me
+      // don't persist auth/user (cookie + /api/auth/me is source of truth)
       partialize: (s) => {
-        const { user, uiMode, authLoaded, hydrated, ...rest } = s as any;
+        const { user, authLoaded, hydrated, ...rest } = s as any;
         return rest;
       },
     }

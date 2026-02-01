@@ -84,8 +84,10 @@ function spriteForTask(category: TaskCategory) {
       return "/assets/sprites/landmarks/shop.png";
     case "fun":
       return "/assets/sprites/landmarks/play.png";
-    case "bill":
+    case "bills":
       return "/assets/sprites/landmarks/bank.png";
+    default:
+      return "/assets/sprites/landmarks/shop.png";
   }
 }
 
@@ -94,38 +96,37 @@ const FALLBACK_TASKS: Omit<Task, "id" | "dueAt" | "createdAt" | "status">[] = [
     title: "Pay Rent",
     category: "rent",
     costCents: 2200,
-    prompt:
-      "It’s rent day! Pay your rent to keep your home happy and your budget steady.",
-    hint: "Put money in chequing before paying."
+    prompt: "It’s rent day! Pay your rent to keep your home happy and your budget steady.",
+    hint: "Put money in chequing before paying.",
   },
   {
     title: "Grocery Run",
     category: "food",
     costCents: 650,
     prompt: "You need groceries for the week. Can you stay within your budget?",
-    hint: "Needs first, wants later."
+    hint: "Needs first, wants later.",
   },
   {
     title: "Bus Pass",
     category: "transport",
     costCents: 500,
     prompt: "Get a bus pass so you can travel around town.",
-    hint: "Transportation is a monthly expense."
+    hint: "Transportation is a monthly expense.",
   },
   {
     title: "Phone Bill",
-    category: "bill",
+    category: "bills",
     costCents: 750,
     prompt: "Your phone bill is due. Missing it can add a fee.",
-    hint: "Bills have deadlines — check due dates."
+    hint: "Bills have deadlines — check due dates.",
   },
   {
     title: "Snack Treat",
     category: "fun",
     costCents: 300,
     prompt: "A fun snack treat! It’s optional, but it costs money.",
-    hint: "Wants are okay — just plan for them."
-  }
+    hint: "Wants are okay — just plan for them.",
+  },
 ];
 
 export default function Game() {
@@ -145,61 +146,38 @@ export default function Game() {
     markTask,
     closeMonth,
     monthStartTs,
-    monthIndex
+    monthIndex,
   } = useGameStore();
+
+  // --- keep refs to avoid restarting RAF on state changes ---
+  const coinsRef = useRef<WorldCoin[]>([]);
+  const tasksRef = useRef<Task[]>([]);
+  const taskPickupsRef = useRef<TaskPickup[]>([]);
+  const cheqRef = useRef<number>(chequingCents);
+  const savRef = useRef<number>(savingsCents);
+  const monthStartRef = useRef<number>(monthStartTs);
+  const monthIndexRef = useRef<number>(monthIndex);
+
+  useEffect(() => {
+    tasksRef.current = tasks;
+  }, [tasks]);
+
+  useEffect(() => {
+    cheqRef.current = chequingCents;
+    savRef.current = savingsCents;
+  }, [chequingCents, savingsCents]);
+
+  useEffect(() => {
+    monthStartRef.current = monthStartTs;
+    monthIndexRef.current = monthIndex;
+  }, [monthStartTs, monthIndex]);
 
   const totalCents = chequingCents + savingsCents;
 
   const [coins, setCoins] = useState<WorldCoin[]>([]);
-  const [landmarks] = useState<Landmark[]>(() => [
-    {
-      id: "lm_bank",
-      type: "bank",
-      x: 520,
-      y: 420,
-      radius: 70,
-      sprite: "/assets/sprites/landmarks/bank.png",
-      label: "Bank"
-    },
-    {
-      id: "lm_snack",
-      type: "snack",
-      x: 2400,
-      y: 500,
-      radius: 70,
-      sprite: "/assets/sprites/landmarks/snack.png",
-      label: "Snack"
-    },
-    {
-      id: "lm_shop",
-      type: "shop",
-      x: 650,
-      y: 1750,
-      radius: 70,
-      sprite: "/assets/sprites/landmarks/shop.png",
-      label: "Shop"
-    },
-    {
-      id: "lm_play",
-      type: "play",
-      x: 2500,
-      y: 1750,
-      radius: 70,
-      sprite: "/assets/sprites/landmarks/play.png",
-      label: "Play"
-    },
-    {
-      id: "lm_home",
-      type: "home",
-      x: 1550,
-      y: 1150,
-      radius: 80,
-      sprite: "/assets/sprites/landmarks/home.png",
-      label: "Home"
-    }
-  ]);
   const [taskPickups, setTaskPickups] = useState<TaskPickup[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+
   const selectedTask = useMemo(
     () => tasks.find((t) => t.id === selectedTaskId) ?? null,
     [tasks, selectedTaskId]
@@ -210,20 +188,32 @@ export default function Game() {
   const [coachText, setCoachText] = useState<string>("");
   const [coachLoading, setCoachLoading] = useState(false);
 
+  const [monthEndsIn, setMonthEndsIn] = useState<number>(() => {
+    return Math.max(0, monthStartTs + MONTH_LENGTH_MS - Date.now());
+  });
+  const monthClosedRef = useRef(false);
+
+  const [landmarks] = useState<Landmark[]>(() => [
+    { id: "lm_bank", type: "bank", x: 520, y: 420, radius: 70, sprite: "/assets/sprites/landmarks/bank.png", label: "Bank" },
+    { id: "lm_snack", type: "snack", x: 2400, y: 500, radius: 70, sprite: "/assets/sprites/landmarks/snack.png", label: "Snack" },
+    { id: "lm_shop", type: "shop", x: 650, y: 1750, radius: 70, sprite: "/assets/sprites/landmarks/shop.png", label: "Shop" },
+    { id: "lm_play", type: "play", x: 2500, y: 1750, radius: 70, sprite: "/assets/sprites/landmarks/play.png", label: "Play" },
+    { id: "lm_home", type: "home", x: 1550, y: 1150, radius: 80, sprite: "/assets/sprites/landmarks/home.png", label: "Home" },
+  ]);
+
   const playerRef = useRef({
     x: WORLD_W * 0.45,
     y: WORLD_H * 0.55,
     vx: 0,
     vy: 0,
     radius: PLAYER_BASE_RADIUS,
-    growthCents: 0
+    growthCents: 0,
   });
 
   const camRef = useRef({ x: 0, y: 0 });
   const spritesRef = useRef<Record<string, HTMLImageElement>>({});
 
-  const monthEndsIn = Math.max(0, monthStartTs + MONTH_LENGTH_MS - Date.now());
-
+  // --- Init coins ONCE ---
   useEffect(() => {
     const initial: WorldCoin[] = [];
     for (let i = 0; i < 220; i++) {
@@ -231,12 +221,14 @@ export default function Game() {
         id: uid("coin"),
         x: Math.random() * WORLD_W,
         y: Math.random() * WORLD_H,
-        valueCents: pick(COIN_VALUES)
+        valueCents: pick(COIN_VALUES),
       });
     }
+    coinsRef.current = initial;
     setCoins(initial);
   }, []);
 
+  // --- Load sprites ---
   useEffect(() => {
     const paths = [
       "/assets/sprites/player/coin_idle.png",
@@ -247,7 +239,7 @@ export default function Game() {
       "/assets/sprites/landmarks/snack.png",
       "/assets/sprites/landmarks/shop.png",
       "/assets/sprites/landmarks/play.png",
-      "/assets/sprites/landmarks/home.png"
+      "/assets/sprites/landmarks/home.png",
     ];
 
     const map: Record<string, HTMLImageElement> = {};
@@ -274,6 +266,7 @@ export default function Game() {
     };
   }, []);
 
+  // --- Controls ---
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       keysRef.current[e.key.toLowerCase()] = true;
@@ -309,55 +302,116 @@ export default function Game() {
     };
   }, []);
 
+  // --- Live month countdown + auto close month ---
   useEffect(() => {
-    async function ensureTasks() {
-      if (tasks.length >= 3) return;
+    monthClosedRef.current = false;
 
+    const id = setInterval(() => {
+      const ms = Math.max(0, monthStartRef.current + MONTH_LENGTH_MS - Date.now());
+      setMonthEndsIn(ms);
+
+      if (ms <= 0 && !monthClosedRef.current) {
+        monthClosedRef.current = true;
+        narrate("Month ended! Let's look at your results.");
+        closeMonth();
+      }
+    }, 250);
+
+    return () => clearInterval(id);
+  }, [closeMonth, monthStartTs, monthIndex]);
+
+  // --- Spawn tasks at the START of EACH month ---
+  useEffect(() => {
+    // reset UI selections each month
+    setSelectedTaskId(null);
+    setTaskModalOpen(false);
+    setCoachModalOpen(false);
+    setCoachText("");
+
+    // create tasks for the month (Gemini -> fallback)
+    async function spawnMonthlyTasks() {
       try {
         const res = await fetch("/api/gemini/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ monthIndex, difficulty: "easy" })
+          body: JSON.stringify({ monthIndex: monthIndexRef.current, difficulty: "easy" }),
         });
 
         if (!res.ok) throw new Error("No AI tasks");
         const j = await res.json();
-        upsertTasks(j.tasks);
+
+        const now = Date.now();
+        const monthEnd = monthStartRef.current + MONTH_LENGTH_MS;
+
+        // Normalize tasks (ensure id/status/createdAt/dueAt exist & are inside the month)
+        const normalized: Task[] = (j?.tasks || []).slice(0, 8).map((t: any, idx: number) => {
+          const createdAt = now;
+          const spread = Math.floor((idx + 1) * (MONTH_LENGTH_MS / 7));
+          const dueAt = clamp(monthStartRef.current + spread, now + 30_000, monthEnd);
+
+          return {
+            id: String(t.id || uid("task")),
+            title: String(t.title || "Task"),
+            category: (t.category || "bills") as TaskCategory,
+            costCents: Number(t.costCents || 300),
+            prompt: String(t.prompt || "Complete this task."),
+            hint: String(t.hint || "Think before you spend."),
+            status: "open",
+            createdAt,
+            dueAt,
+          } as Task;
+        });
+
+        upsertTasks(normalized);
         narrate("New month tasks are ready. Walk around to find them!");
       } catch {
         const now = Date.now();
-        const fallback = FALLBACK_TASKS.map((t, idx) => ({
-          id: uid("task"),
-          title: t.title,
-          category: t.category,
-          costCents: t.costCents,
-          dueAt: now + (idx === 0 ? 4 : 2) * 60_000,
-          prompt: t.prompt,
-          hint: t.hint,
-          status: "open" as const,
-          createdAt: now
-        }));
+        const monthEnd = monthStartRef.current + MONTH_LENGTH_MS;
+
+        const fallback = FALLBACK_TASKS.map((t, idx) => {
+          const spread = Math.floor((idx + 1) * (MONTH_LENGTH_MS / 7));
+          const dueAt = clamp(monthStartRef.current + spread, now + 30_000, monthEnd);
+
+          return {
+            id: uid("task"),
+            title: t.title,
+            category: t.category,
+            costCents: t.costCents,
+            dueAt,
+            prompt: t.prompt,
+            hint: t.hint,
+            status: "open" as const,
+            createdAt: now,
+          };
+        });
+
         upsertTasks(fallback);
         narrate("Tasks loaded. Walk around to find them!");
       }
     }
-    ensureTasks();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
+    spawnMonthlyTasks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthStartTs, monthIndex]);
+
+  // --- Build pickups whenever tasks change (open tasks only) ---
   useEffect(() => {
     const openTasks = tasks.filter((t) => t.status === "open");
+
     const pickups: TaskPickup[] = openTasks.map((t) => ({
       id: uid("pickup"),
       x: 350 + Math.random() * (WORLD_W - 700),
       y: 350 + Math.random() * (WORLD_H - 700),
       taskId: t.id,
       category: t.category,
-      sprite: spriteForTask(t.category)
+      sprite: spriteForTask(t.category),
     }));
+
+    taskPickupsRef.current = pickups;
     setTaskPickups(pickups);
   }, [tasks]);
 
+  // --- Animation loop (ONE TIME) ---
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -380,20 +434,13 @@ export default function Game() {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [coins, taskPickups, tasks, totalCents]);
-
-  useEffect(() => {
-    if (monthEndsIn <= 0) {
-      narrate("Month ended! Let's look at your results.");
-      closeMonth();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [monthEndsIn]);
+  }, []);
 
   function step(dt: number) {
     const p = playerRef.current;
 
-    const targetRadius = radiusFromTotalCents(totalCents + p.growthCents);
+    const total = cheqRef.current + savRef.current;
+    const targetRadius = radiusFromTotalCents(total + p.growthCents);
     p.radius = lerp(p.radius, targetRadius, clamp(dt * 4, 0, 1));
 
     const speed = speedFromRadius(p.radius);
@@ -439,42 +486,48 @@ export default function Game() {
     cam.x = clamp(cam.x, 0, WORLD_W - CANVAS_W);
     cam.y = clamp(cam.y, 0, WORLD_H - CANVAS_H);
 
-    const collected: string[] = [];
     const pPos = { x: p.x, y: p.y };
-    for (const c of coins) {
+
+    // Collect coins
+    const collected: string[] = [];
+    for (const c of coinsRef.current) {
       if (dist(pPos, c) < p.radius + 12) collected.push(c.id);
     }
     if (collected.length) {
-      const earned = coins
+      const earned = coinsRef.current
         .filter((c) => collected.includes(c.id))
         .reduce((acc, c) => acc + c.valueCents, 0);
 
       deposit("chequing", earned, "Collected coins", "income");
       p.growthCents += Math.round(earned * 0.35);
 
-      setCoins((prev) => {
-        const kept = prev.filter((c) => !collected.includes(c.id));
-        for (let i = 0; i < collected.length; i++) {
-          kept.push({
-            id: uid("coin"),
-            x: Math.random() * WORLD_W,
-            y: Math.random() * WORLD_H,
-            valueCents: pick(COIN_VALUES)
-          });
-        }
-        return kept;
-      });
+      const kept = coinsRef.current.filter((c) => !collected.includes(c.id));
+      for (let i = 0; i < collected.length; i++) {
+        kept.push({
+          id: uid("coin"),
+          x: Math.random() * WORLD_W,
+          y: Math.random() * WORLD_H,
+          valueCents: pick(COIN_VALUES),
+        });
+      }
+      coinsRef.current = kept;
+      setCoins(kept);
     }
 
-    const hitPickup = taskPickups.find((tp) => dist(pPos, tp) < p.radius + 26);
+    // Touch a task pickup
+    const hitPickup = taskPickupsRef.current.find((tp) => dist(pPos, tp) < p.radius + 26);
     if (hitPickup) {
       setSelectedTaskId(hitPickup.taskId);
       setTaskModalOpen(true);
-      setTaskPickups((prev) => prev.filter((x) => x.id !== hitPickup.id));
+
+      const next = taskPickupsRef.current.filter((x) => x.id !== hitPickup.id);
+      taskPickupsRef.current = next;
+      setTaskPickups(next);
     }
 
+    // Expire tasks
     const now = Date.now();
-    for (const t of tasks) {
+    for (const t of tasksRef.current) {
       if (t.status === "open" && now > t.dueAt) {
         markTask(t.id, "failed");
         p.growthCents -= Math.round(t.costCents * 0.2);
@@ -537,7 +590,7 @@ export default function Game() {
 
     ctx.fillStyle = "#4A2A1B";
     ctx.font = "900 18px ui-sans-serif";
-    ctx.fillText(`Month #${monthIndex}`, pad + 18, pad + 30);
+    ctx.fillText(`Month #${monthIndexRef.current}`, pad + 18, pad + 30);
 
     ctx.font = "700 14px ui-sans-serif";
     ctx.fillStyle = "rgba(74,42,27,0.75)";
@@ -545,20 +598,16 @@ export default function Game() {
 
     ctx.font = "900 16px ui-sans-serif";
     ctx.fillStyle = "#4A2A1B";
-    ctx.fillText(`Chequing: ${fmtMoney(chequingCents)}`, pad + 18, pad + 84);
-    ctx.fillText(`Savings: ${fmtMoney(savingsCents)}`, pad + 18, pad + 110);
+    ctx.fillText(`Chequing: ${fmtMoney(cheqRef.current)}`, pad + 18, pad + 84);
+    ctx.fillText(`Savings: ${fmtMoney(savRef.current)}`, pad + 18, pad + 110);
 
-    const open = tasks.filter((t) => t.status === "open").length;
-    const paid = tasks.filter((t) => t.status === "paid").length;
-    const failed = tasks.filter((t) => t.status === "failed").length;
+    const open = tasksRef.current.filter((t) => t.status === "open").length;
+    const paid = tasksRef.current.filter((t) => t.status === "paid").length;
+    const failed = tasksRef.current.filter((t) => t.status === "failed").length;
 
     ctx.font = "700 13px ui-sans-serif";
     ctx.fillStyle = "rgba(74,42,27,0.75)";
-    ctx.fillText(
-      `Tasks — open ${open} • paid ${paid} • missed ${failed}`,
-      pad + 18,
-      pad + 136
-    );
+    ctx.fillText(`Tasks — open ${open} • paid ${paid} • missed ${failed}`, pad + 18, pad + 136);
 
     ctx.restore();
 
@@ -568,11 +617,7 @@ export default function Game() {
     ctx.globalAlpha = 1;
     ctx.fillStyle = "rgba(74,42,27,0.85)";
     ctx.font = "800 14px ui-sans-serif";
-    ctx.fillText(
-      "Move: mouse (Agar-style) or WASD • Collect coins • Touch icons to open tasks",
-      32,
-      CANVAS_H - 34
-    );
+    ctx.fillText("Move: mouse (Agar-style) or WASD • Collect coins • Touch icons to open tasks", 32, CANVAS_H - 34);
     ctx.restore();
   }
 
@@ -616,7 +661,7 @@ export default function Game() {
       ctx.fillText(lm.label, lm.x, lm.y + lm.radius + 26);
     }
 
-    for (const c of coins) {
+    for (const c of coinsRef.current) {
       const sprite =
         c.valueCents >= 200
           ? "/assets/sprites/coins/coin_3.png"
@@ -626,7 +671,7 @@ export default function Game() {
       drawSpriteCentered(ctx, sprite, c.x, c.y, 28, 28);
     }
 
-    for (const tp of taskPickups) {
+    for (const tp of taskPickupsRef.current) {
       drawSpriteCentered(ctx, tp.sprite, tp.x, tp.y, 64, 64);
       ctx.beginPath();
       ctx.arc(tp.x, tp.y, 42, 0, Math.PI * 2);
@@ -657,11 +702,7 @@ export default function Game() {
       "chequing",
       selectedTask.costCents,
       selectedTask.title,
-      selectedTask.category === "rent"
-        ? "rent"
-        : selectedTask.category === "food"
-        ? "food"
-        : "other"
+      selectedTask.category === "rent" ? "rent" : selectedTask.category === "food" ? "food" : "other"
     );
 
     if (!ok) {
@@ -689,19 +730,18 @@ export default function Game() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          situation: `Task: ${selectedTask.title}. Cost: ${(selectedTask.costCents / 100).toFixed(
-            2
-          )} dollars. Hint: ${selectedTask.hint}. My balances: chequing ${(chequingCents / 100).toFixed(
-            2
-          )}, savings ${(savingsCents / 100).toFixed(
-            2
-          )}. Explain what I should do and teach terms.`
-        })
+          situation: `Task: ${selectedTask.title}. Cost: ${(selectedTask.costCents / 100).toFixed(2)} dollars. Hint: ${selectedTask.hint}.
+My balances: chequing ${(cheqRef.current / 100).toFixed(2)}, savings ${(savRef.current / 100).toFixed(2)}.
+Explain what I should do and teach simple money terms.`,
+        }),
       });
 
       if (!res.ok) throw new Error("AI coach unavailable (set GEMINI_API_KEY).");
       const j = await res.json();
-      setCoachText(j.text);
+
+      // Support either { text } or { advice }
+      const msg = (j?.text || j?.advice || "").toString().trim();
+      setCoachText(msg || "Coach had no response.");
       narrate("Here's a tip from your money coach.");
     } catch (e: any) {
       setCoachText(e?.message ?? "Coach unavailable.");
@@ -719,38 +759,15 @@ export default function Game() {
       <div className="penny-card p-3">
         <div className="flex items-center justify-between px-2 pb-2">
           <div className="flex items-center gap-2">
-            <img
-              src="/assets/sprites/player/coin_idle.png"
-              className="h-10 w-10"
-              alt="Penny"
-            />
+            <img src="/assets/sprites/player/coin_idle.png" className="h-10 w-10" alt="Penny" />
             <div>
               <div className="font-extrabold">Penny World</div>
-              <div className="text-xs text-penny-brown/70">
-                Agar-style movement • collect & pay tasks
-              </div>
+              <div className="text-xs text-penny-brown/70">Agar-style movement • collect & pay tasks</div>
             </div>
           </div>
           <div className="flex gap-2">
             <button
               className="penny-btn bg-white"
-              onClick={() => {
-                narrate("Generating new tasks. Walk around to find them.");
-                fetch("/api/gemini/tasks", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ monthIndex, difficulty: "easy" })
-                })
-                  .then((r) => (r.ok ? r.json() : Promise.reject()))
-                  .then((j) => upsertTasks(j.tasks))
-                  .catch(() => {});
-              }}
-            >
-              New Tasks
-            </button>
-
-            <button
-              className="penny-btn"
               onClick={() => {
                 closeMonth();
                 narrate("Month closed. Check your bank statement!");
@@ -762,20 +779,13 @@ export default function Game() {
         </div>
 
         <div className="rounded-xl2 overflow-hidden border border-black/5 bg-white">
-          <canvas
-            ref={canvasRef}
-            width={CANVAS_W}
-            height={CANVAS_H}
-            className="block w-full h-auto"
-          />
+          <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H} className="block w-full h-auto" />
         </div>
       </div>
 
       <div className="penny-card p-4">
         <div className="text-lg font-extrabold">Tasks</div>
-        <div className="text-sm text-penny-brown/70">
-          Touch icons in the world to open them.
-        </div>
+        <div className="text-sm text-penny-brown/70">Touch icons in the world to open them.</div>
 
         <div className="mt-3 space-y-3 max-h-[670px] overflow-auto pr-1">
           {openTasks.map((t) => {
@@ -793,18 +803,11 @@ export default function Game() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="font-extrabold">{t.title}</div>
-                    <div className="text-xs text-penny-brown/70 capitalize">
-                      {t.category}
-                    </div>
+                    <div className="text-xs text-penny-brown/70 capitalize">{t.category}</div>
                   </div>
                   <div className="text-right">
                     <div className="font-black">{fmtMoney(t.costCents)}</div>
-                    <div
-                      className={
-                        "text-xs font-semibold " +
-                        (urgent ? "text-red-600" : "text-penny-brown/70")
-                      }
-                    >
+                    <div className={"text-xs font-semibold " + (urgent ? "text-red-600" : "text-penny-brown/70")}>
                       {msLeft > 0 ? `Due: ${msToClock(msLeft)}` : "OVERDUE"}
                     </div>
                   </div>
@@ -813,9 +816,10 @@ export default function Game() {
               </button>
             );
           })}
+
           {openTasks.length === 0 ? (
             <div className="p-3 rounded-xl2 bg-white border border-black/5 text-sm text-penny-brown/70">
-              No open tasks right now. Collect coins or start a new month.
+              No open tasks right now. Wait for next month or end the month early.
             </div>
           ) : null}
         </div>
@@ -823,11 +827,7 @@ export default function Game() {
 
       <Modal
         open={taskModalOpen && !!selectedTask}
-        title={
-          selectedTask
-            ? `${selectedTask.title} — ${fmtMoney(selectedTask.costCents)}`
-            : "Task"
-        }
+        title={selectedTask ? `${selectedTask.title} — ${fmtMoney(selectedTask.costCents)}` : "Task"}
         onClose={() => {
           setTaskModalOpen(false);
           setSelectedTaskId(null);
@@ -849,26 +849,21 @@ export default function Game() {
           <div className="space-y-3">
             <div className="p-4 rounded-xl2 bg-penny-tan/30 border border-black/5">
               <div className="font-bold">Scenario</div>
-              <div className="text-sm text-penny-brown/80 mt-1">
-                {selectedTask.prompt}
-              </div>
+              <div className="text-sm text-penny-brown/80 mt-1">{selectedTask.prompt}</div>
             </div>
+
             <div className="text-sm text-penny-brown/80">
               <span className="font-extrabold">Hint:</span> {selectedTask.hint}
             </div>
+
             <div className="text-sm text-penny-brown/80">
-              <span className="font-extrabold">Tip:</span> If you can’t pay,
-              transfer from Savings in the bank home page.
+              <span className="font-extrabold">Tip:</span> If you can’t pay, transfer from Savings on the Bank Home page.
             </div>
           </div>
         ) : null}
       </Modal>
 
-      <Modal
-        open={coachModalOpen}
-        title={"Money Coach"}
-        onClose={() => setCoachModalOpen(false)}
-      >
+      <Modal open={coachModalOpen} title={"Money Coach"} onClose={() => setCoachModalOpen(false)}>
         {coachLoading ? (
           <div className="text-sm text-penny-brown/70">Thinking…</div>
         ) : (

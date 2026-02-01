@@ -9,7 +9,7 @@ export type LedgerEntry = {
   category: "income" | "rent" | "food" | "home" | "fun" | "fees" | "transfer" | "other";
 };
 
-export type TaskCategory = "rent" | "food" | "home" | "furniture" | "transport" | "fun" | "bill";
+export type TaskCategory = "rent" | "food" | "home" | "furniture" | "transport" | "fun" | "bills" | "wants";
 
 export type Task = {
   id: string;
