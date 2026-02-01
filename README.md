@@ -1,1 +1,1 @@
-# penny
+# Penny\n\nSee .env.example and run `npm i` then `npm run dev`.\n

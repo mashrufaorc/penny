@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+
+html, body { height: 100%; }
+
+body {
+  @apply bg-penny-cream text-penny-brown antialiased;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;
+}
+
+.penny-card { @apply rounded-xl2 bg-white shadow-soft border border-black/5; }
+.penny-btn { @apply inline-flex items-center justify-center rounded-xl2 px-4 py-2 font-semibold shadow-soft border border-black/10 bg-penny-gold text-penny-brown hover:brightness-105 active:brightness-95 transition; }
+.penny-chip { @apply inline-flex items-center gap-2 rounded-full px-3 py-1 bg-penny-tan/40 border border-black/5 text-sm; }
+.penny-title { @apply text-3xl md:text-4xl font-extrabold tracking-tight; }
+.penny-subtitle { @apply text-base md:text-lg text-penny-brown/80; }
