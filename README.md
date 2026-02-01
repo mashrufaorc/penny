@@ -87,13 +87,18 @@ penny/
 
 ### ⚙️ Setup Instructions
 1️⃣ Clone the Repository
+```bash
 git clone https://github.com/mashrufaorc/penny.git
 cd penny
-2️⃣ Install Dependencies
-npm install
-3️⃣ Create .env.local
-Create a file named .env.local in the project root:
+```
 
+2️⃣ Install Dependencies
+```bash
+npm install
+```
+
+3️⃣ Create a file named .env.local in the project root:
+```bash
 # ---------------------------
 # Database
 # ---------------------------
@@ -115,12 +120,17 @@ GEMINI_MODEL="gemini-2.5-flash"
 # ---------------------------
 ELEVENLABS_API_KEY="replace_with_your_elevenlabs_api_key"
 ELEVENLABS_VOICE_ID="optional_voice_id"
-
+```
 
 ### 🧪 Running the App
+```bash
 npm run dev
+```
+
 Open your browser at:
+```bash
 http://localhost:3000
+```
 
 
 ### 💡 Future Improvements
