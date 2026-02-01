@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useGameStore } from "@/lib/store";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,21 +13,39 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
+  const bootstrapAuth = useGameStore((s) => s.bootstrapAuth);
 
-  async function submit() {
+  async function submit(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (loading) return;
+
     setErr("");
     setLoading(true);
+
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j?.error ?? "Failed");
+
+      const text = await res.text();
+      let j: any = {};
+      try {
+        j = text ? JSON.parse(text) : {};
+      } catch {
+        j = {};
+      }
+
+      if (!res.ok) {
+        throw new Error(j?.error || text || "Login failed");
+      }
+
+      await bootstrapAuth().catch(() => {});
+
       router.replace(next);
     } catch (e: any) {
-      setErr(e?.message ?? "Failed");
+      setErr(e?.message ?? "Login failed");
     } finally {
       setLoading(false);
     }
@@ -38,22 +57,45 @@ export default function LoginPage() {
         <h1 className="penny-title text-3xl">Sign in</h1>
         <p className="penny-subtitle mt-1">Welcome back to Penny.</p>
 
-        <div className="mt-5 space-y-3">
-          <input className="w-full rounded-xl2 border border-black/10 bg-white px-4 py-3"
-            placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <input className="w-full rounded-xl2 border border-black/10 bg-white px-4 py-3"
-            placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <form className="mt-5 space-y-3" onSubmit={submit}>
+          <input
+            className="w-full rounded-xl2 border border-black/10 bg-white px-4 py-3"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            inputMode="email"
+            required
+          />
+          <input
+            className="w-full rounded-xl2 border border-black/10 bg-white px-4 py-3"
+            placeholder="Password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+            required
+          />
 
-          {err ? <div className="p-3 rounded-xl2 bg-red-50 border border-red-200 text-sm">{err}</div> : null}
+          {err ? (
+            <div className="p-3 rounded-xl2 bg-red-50 border border-red-200 text-sm">
+              {err}
+            </div>
+          ) : null}
 
-          <button className="penny-btn w-full" onClick={submit} disabled={loading}>
+          <button className="penny-btn w-full" type="submit" disabled={loading}>
             {loading ? "Signing in..." : "Sign in"}
           </button>
 
-          <button className="penny-btn w-full bg-white" onClick={() => router.push(`/signup?next=${encodeURIComponent(next)}`)}>
+          <button
+            className="penny-btn w-full bg-white"
+            type="button"
+            disabled={loading}
+            onClick={() => router.push(`/signup?next=${encodeURIComponent(next)}`)}
+          >
             Create account
           </button>
-        </div>
+        </form>
       </div>
     </main>
   );
