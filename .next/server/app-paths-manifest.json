@@ -1,8 +1,0 @@
-{
-  "/page": "app/page.js",
-  "/play/page": "app/play/page.js",
-  "/api/tts/route": "app/api/tts/route.js",
-  "/statement/page": "app/statement/page.js",
-  "/api/gemini/statement/route": "app/api/gemini/statement/route.js",
-  "/help/page": "app/help/page.js"
-}
