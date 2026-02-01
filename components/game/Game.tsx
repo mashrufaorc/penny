@@ -287,7 +287,12 @@ export default function Game() {
     if (!canvas) return;
 
     function onMove(e: PointerEvent) {
-      const rect = canvas.getBoundingClientRect();
+      const c = canvasRef.current;
+      if (!c) {
+        pointerRef.current = null;
+        return;
+      }
+      const rect = c.getBoundingClientRect();
       pointerRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     }
     function onLeave() {
@@ -415,8 +420,7 @@ export default function Game() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const ctx = canvas.getContext("2d")!;
 
     function tick(ts: number) {
       const last = lastTsRef.current || ts;
