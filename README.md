@@ -10,31 +10,23 @@ penny/
 │   │   │   │   └── route.ts
 │   │   │   └── me/
 │   │   │       └── route.ts
-│   │   │
 │   │   ├── gemini/
 │   │   │   └── statement/
 │   │   │       └── route.ts
-│   │   │
 │   │   └── statements/
 │   │       └── month/
 │   │           └── [monthIndex]/
 │   │               └── route.ts
-│   │
 │   ├── login/
 │   │   └── page.tsx
-│   │
 │   ├── signup/
 │   │   └── page.tsx
-│   │
 │   ├── play/
 │   │   └── page.tsx
-│   │
 │   ├── statement/
 │   │   └── page.tsx
-│   │
 │   ├── help/
 │   │   └── page.tsx
-│   │
 │   ├── layout.tsx
 │   ├── page.tsx
 │   └── globals.css
@@ -72,7 +64,6 @@ penny/
 │   │   └── ui/
 │   │       ├── button.png
 │   │       └── card_bg.png
-│   │
 │   └── favicon.ico
 │
 ├── middleware.ts
