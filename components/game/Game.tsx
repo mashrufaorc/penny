@@ -849,8 +849,6 @@ What should I do next to pay this on time? Teach 1-2 terms.
       const advice = String(j.advice || "No advice returned.");
       setCoachText(advice);
       narrate("Here's a tip from your money coach.");
-
-      // ✅ ElevenLabs reads it out loud
       speak(advice);
     } catch (e: any) {
       setCoachText(e?.message ?? "Coach unavailable.");
@@ -970,7 +968,7 @@ What should I do next to pay this on time? Teach 1-2 terms.
           selectedTask ? (
             <>
               <button className="penny-btn bg-white" onClick={askCoach}>
-                Ask Coach (Gemini)
+                Ask Coach
               </button>
               <button className="penny-btn" onClick={paySelectedTask}>
                 Pay from Chequing

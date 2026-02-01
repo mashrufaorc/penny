@@ -12,7 +12,6 @@ export function TopNav() {
 
   const {
     user,
-    uiMode,
     authLoaded,
     bootstrapAuth,
     signOut,
@@ -20,7 +19,6 @@ export function TopNav() {
 
   useEffect(() => {
     if (!authLoaded) bootstrapAuth();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoaded]);
 
   const items = [
@@ -40,7 +38,7 @@ export function TopNav() {
       <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-3">
         <Link href="/" className="flex items-center gap-2">
           <img
-            src="/assets/brand/penny_logo.png"
+            src="/assets/brand/penny_banner.png"
             alt="Penny"
             className="h-10 w-auto"
           />

@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import AppShell from "@/components/AppShell";
 
 export const metadata: Metadata = {
-  title: "Penny — Play Bank + Life Game",
+  title: " 🪙 Penny",
   description:
     "A kid-friendly financial literacy world where your coin grows by making smart money decisions.",
 };
