@@ -42,7 +42,6 @@ export default function LoginPage() {
       }
 
       await bootstrapAuth().catch(() => {});
-
       router.replace(next);
     } catch (e: any) {
       setErr(e?.message ?? "Login failed");
@@ -53,49 +52,60 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen bg-penny-cream flex items-center justify-center px-4">
-      <div className="penny-card w-full max-w-md p-6">
-        <h1 className="penny-title text-3xl">Sign in</h1>
-        <p className="penny-subtitle mt-1">Welcome back to Penny.</p>
-
-        <form className="mt-5 space-y-3" onSubmit={submit}>
-          <input
-            className="w-full rounded-xl2 border border-black/10 bg-white px-4 py-3"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
-            inputMode="email"
-            required
+      <div className="w-full max-w-md">
+        {/* 🔹 ADDED IMAGE ONLY */}
+        <div className="flex justify-center mb-6">
+          <img
+            src="/assets/brand/penny_banner.png"
+            alt="Penny"
+            className="w-full max-w-[420px] h-auto"
           />
-          <input
-            className="w-full rounded-xl2 border border-black/10 bg-white px-4 py-3"
-            placeholder="Password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            required
-          />
+        </div>
 
-          {err ? (
-            <div className="p-3 rounded-xl2 bg-red-50 border border-red-200 text-sm">
-              {err}
-            </div>
-          ) : null}
+        <div className="penny-card w-full p-6">
+          <h1 className="penny-title text-3xl">Sign in</h1>
+          <p className="penny-subtitle mt-1">Welcome back to Penny.</p>
 
-          <button className="penny-btn w-full" type="submit" disabled={loading}>
-            {loading ? "Signing in..." : "Sign in"}
-          </button>
+          <form className="mt-5 space-y-3" onSubmit={submit}>
+            <input
+              className="w-full rounded-xl2 border border-black/10 bg-white px-4 py-3"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              inputMode="email"
+              required
+            />
+            <input
+              className="w-full rounded-xl2 border border-black/10 bg-white px-4 py-3"
+              placeholder="Password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
 
-          <button
-            className="penny-btn w-full bg-white"
-            type="button"
-            disabled={loading}
-            onClick={() => router.push(`/signup?next=${encodeURIComponent(next)}`)}
-          >
-            Create account
-          </button>
-        </form>
+            {err ? (
+              <div className="p-3 rounded-xl2 bg-red-50 border border-red-200 text-sm">
+                {err}
+              </div>
+            ) : null}
+
+            <button className="penny-btn w-full" type="submit" disabled={loading}>
+              {loading ? "Signing in..." : "Sign in"}
+            </button>
+
+            <button
+              className="penny-btn w-full bg-white"
+              type="button"
+              disabled={loading}
+              onClick={() => router.push(`/signup?next=${encodeURIComponent(next)}`)}
+            >
+              Create account
+            </button>
+          </form>
+        </div>
       </div>
     </main>
   );
