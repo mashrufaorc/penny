@@ -39,7 +39,6 @@ function requireEnv(name: string) {
   return v;
 }
 
-// Gemini 2.5 often wraps JSON or adds commentary
 function extractJsonArray(text: string) {
   const cleaned = text
     .replace(/```json/gi, "")
@@ -70,7 +69,6 @@ export async function POST(req: Request) {
 
     const genAI = new GoogleGenerativeAI(requireEnv("GEMINI_API_KEY"));
 
-    // ✅ Correct Gemini 2.5 model
     const model = genAI.getGenerativeModel({
       model: "gemini-2.5-flash",
     });
@@ -125,7 +123,6 @@ Return JSON array only.
       createdAt: now,
     }));
 
-    // Safety check: enforce exactly 1 rent
     const rentCount = tasks.filter((t) => t.category === "rent").length;
     if (rentCount !== 1) {
       tasks[0].category = "rent";

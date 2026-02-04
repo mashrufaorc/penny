@@ -17,17 +17,14 @@ export default function PlayPage() {
 
   useEffect(() => setMounted(true), []);
 
-  // Load user session (cookie -> /api/auth/me)
   useEffect(() => {
     if (!authLoaded) bootstrapAuth();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoaded]);
 
-  // Month timer tick (1 month = 5 mins). Also triggers task spawn.
   useEffect(() => {
     if (!mounted) return;
 
-    tickMonth(); // run immediately on mount so tasks appear right away
+    tickMonth();
 
     const id = setInterval(() => {
       tickMonth();

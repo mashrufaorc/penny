@@ -155,7 +155,6 @@ export default function Game() {
     monthIndex,
   } = useGameStore();
 
-  // --- keep refs to avoid restarting RAF on state changes ---
   const coinsRef = useRef<WorldCoin[]>([]);
   const tasksRef = useRef<Task[]>([]);
   const taskPickupsRef = useRef<TaskPickup[]>([]);
@@ -257,7 +256,6 @@ export default function Game() {
   const camRef = useRef({ x: 0, y: 0 });
   const spritesRef = useRef<Record<string, HTMLImageElement>>({});
 
-  // --- Init coins ONCE ---
   useEffect(() => {
     const initial: WorldCoin[] = [];
     for (let i = 0; i < 220; i++) {
@@ -272,7 +270,6 @@ export default function Game() {
     setCoins(initial);
   }, []);
 
-  // --- Load sprites ---
   useEffect(() => {
     const paths = [
       "/assets/sprites/player/coin_idle.png",
@@ -310,7 +307,6 @@ export default function Game() {
     };
   }, []);
 
-  // --- Controls ---
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       keysRef.current[e.key.toLowerCase()] = true;
@@ -351,7 +347,6 @@ export default function Game() {
     };
   }, []);
 
-  // --- Live month countdown + auto close month ---
   useEffect(() => {
     monthClosedRef.current = false;
 
@@ -372,7 +367,6 @@ export default function Game() {
     return () => clearInterval(id);
   }, [closeMonth, monthStartTs, monthIndex]);
 
-  // --- Spawn tasks at the START of EACH month ---
   useEffect(() => {
     setSelectedTaskId(null);
     setTaskModalOpen(false);
@@ -453,10 +447,8 @@ export default function Game() {
     }
 
     spawnMonthlyTasks();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [monthStartTs, monthIndex]);
 
-  // --- Build pickups whenever tasks change (open tasks only) ---
   useEffect(() => {
     const openTasks = tasks.filter((t) => t.status === "open");
 
@@ -473,7 +465,6 @@ export default function Game() {
     setTaskPickups(pickups);
   }, [tasks]);
 
-  // --- Animation loop (ONE TIME) ---
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -494,7 +485,6 @@ export default function Game() {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function step(dt: number) {
@@ -575,7 +565,6 @@ export default function Game() {
       setCoins(kept);
     }
 
-    // Touch a task pickup
     const hitPickup = taskPickupsRef.current.find(
       (tp) => dist(pPos, tp) < p.radius + 26
     );
@@ -588,7 +577,6 @@ export default function Game() {
       setTaskPickups(next);
     }
 
-    // Expire tasks
     const now = Date.now();
     for (const t of tasksRef.current) {
       if (t.status === "open" && now > t.dueAt) {

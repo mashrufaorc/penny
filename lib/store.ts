@@ -9,7 +9,7 @@ type AuthedUser = {
   id: string;
   name?: string | null;
   email?: string | null;
-  ageGroup?: string | null; // keep if your /api/auth/me returns it, but we won't use it in UI
+  ageGroup?: string | null;
 };
 
 type GameState = {
@@ -68,14 +68,11 @@ type GameState = {
   resetAll: () => void;
 };
 
-const MONTH_MS = 1000 * 60 * 5; // 5 minutes per "month"
+const MONTH_MS = 1000 * 60 * 5; 
 
-// Helper: build a predictable, kid-friendly task list.
-// Later you can swap to Gemini-generated tasks; this is stable for hackathon.
 function buildMonthlyTasks(monthStartTs: number): Task[] {
   const dueAt = monthStartTs + MONTH_MS;
 
-  // NOTE: uses your Task shape: id, title, category, costCents, status, createdAt, dueAt
   return [
     {
       id: uid("task"),
@@ -311,7 +308,6 @@ export const useGameStore = create<GameState>()(
         return true;
       },
 
-      // keep your existing merge behavior (still fine)
       upsertTasks: (tasks) => {
         const existing = new Map(get().tasks.map((t) => [t.id, t]));
         const merged: Task[] = [...get().tasks];
@@ -375,8 +371,6 @@ export const useGameStore = create<GameState>()(
           monthSummaries: [summary, ...s.monthSummaries].slice(0, 12),
           monthIndex: s.monthIndex + 1,
           monthStartTs: nowMs(),
-          // IMPORTANT: do NOT set lastSpawnedMonthIndex here.
-          // Next tickMonth() will spawn the new month's tasks.
         });
       },
 

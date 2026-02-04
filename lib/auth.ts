@@ -6,7 +6,7 @@ if (!secret) throw new Error("Missing env: JWT_SECRET");
 const key = new TextEncoder().encode(secret);
 
 export type SessionPayload = {
-  uid: string; // user id
+  uid: string; 
 };
 
 export async function signSession(payload: SessionPayload) {

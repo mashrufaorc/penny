@@ -29,6 +29,5 @@ export async function narrate(text: string) {
     a.onended = () => URL.revokeObjectURL(url);
     await a.play();
   } catch {
-    // ignore
   }
 }

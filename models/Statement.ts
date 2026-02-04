@@ -38,7 +38,7 @@ const StatementSchema = new Schema<StatementDoc>(
       savingsCents: { type: Number, required: true },
     },
 
-    // ✅ Use Mixed arrays (best for “preview” snapshots)
+    // Use Mixed arrays (best for “preview” snapshots)
     ledgerPreview: {
       type: [{ type: Schema.Types.Mixed }],
       default: [],

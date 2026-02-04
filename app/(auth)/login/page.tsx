@@ -53,7 +53,6 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen bg-penny-cream flex items-center justify-center px-4">
       <div className="w-full max-w-md">
-        {/* 🔹 ADDED IMAGE ONLY */}
         <div className="flex justify-center mb-6">
           <img
             src="/assets/brand/penny_banner.png"

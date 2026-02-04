@@ -34,7 +34,6 @@ export default function StatementPage() {
       const res = await fetch("/api/gemini/statement", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // IMPORTANT: route.ts expects ledger items with ts/description/amountCents/account/category
         body: JSON.stringify({
           monthIndex,
           ledger: monthLedger.map((e: any) => ({
@@ -84,7 +83,6 @@ export default function StatementPage() {
     setLoading(true);
 
     try {
-      // Try MongoDB first
       const existingRes = await fetch(`/api/statements/month/${monthIndex}`, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
@@ -110,7 +108,6 @@ export default function StatementPage() {
         }
       }
 
-      // Not found or no ai saved -> generate
       await gen();
     } catch (e: any) {
       setErr(e?.message ?? "Failed");
@@ -120,7 +117,6 @@ export default function StatementPage() {
 
   useEffect(() => {
     loadExistingOrGenerate();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

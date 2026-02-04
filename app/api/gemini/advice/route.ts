@@ -14,7 +14,6 @@ function requireEnv(name: string) {
   return v;
 }
 
-// Gemini sometimes returns ``` fences or extra formatting
 function cleanText(text: string) {
   return (text || "")
     .replace(/```json/gi, "")
@@ -29,7 +28,6 @@ export async function POST(req: Request) {
     const apiKey = requireEnv("GEMINI_API_KEY");
     const genAI = new GoogleGenerativeAI(apiKey);
 
-    // ✅ Gemini 2.5 model
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     const prompt = `

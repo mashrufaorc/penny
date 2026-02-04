@@ -4,17 +4,12 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useGameStore } from "@/lib/store";
 
-/**
- * Pages that require login.
- * (Adjust if you want /help public.)
- */
 const PROTECTED_PREFIXES = ["/", "/play", "/statement"]; // "/" included means Bank Home is protected
 const PUBLIC_PATHS = ["/login", "/signup"]; // add "/forgot" etc if needed
 
 function isProtected(pathname: string) {
   if (PUBLIC_PATHS.includes(pathname)) return false;
 
-  // Protect exact "/" and any of these prefixes
   if (pathname === "/") return true;
   return PROTECTED_PREFIXES.some((p) => p !== "/" && pathname.startsWith(p));
 }
@@ -45,13 +40,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     bootstrapAuth: s.bootstrapAuth,
   }));
 
-  // 1) Load auth once
   useEffect(() => {
     if (!authLoaded) bootstrapAuth();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoaded]);
 
-  // 2) Route protection after auth is known
   useEffect(() => {
     if (!authLoaded) return;
 
@@ -61,12 +53,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [authLoaded, pathname, router, user]);
 
-  // 3) Prevent flashes:
-  // If auth not loaded, show loading.
   if (!authLoaded) return <LoadingScreen />;
 
-  // If page is protected and user is not logged in,
-  // show loading while router redirects (prevents flash).
   if (isProtected(pathname) && !user) return <LoadingScreen />;
 
   return <>{children}</>;
