@@ -35,10 +35,26 @@ This project also aligns with the sponsor challenge:
 
 ## 🧠 What I Learned
 
-- **Kids don’t lack intelligence, they lack exposure**: Financial systems are invisible until someone explains them.
-- **Games and simulations teach faster than lectures**: Seeing balances rise and fall builds intuition.
-- **Tone matters**: Supportive, friendly feedback keeps users engaged instead of discouraged.
-- **Small insights beat big dashboards**: Clear takeaways are more effective than complex charts for beginners.
+- Financial literacy problems are as much UX problems as they are knowledge gaps.
+Kids don’t lack intelligence — they lack exposure to invisible systems like banks, statements, and deadlines. Making those systems visible changes how fast learning happens.
+
+- Games + state = intuition.
+Simulating money with real state (balances, transactions, deadlines) taught me how powerful feedback loops are. Watching numbers change in response to actions builds intuition faster than static explanations or tutorials.
+
+- Client–server boundaries matter, even in games.
+Separating game state (Zustand) from persisted data (MongoDB via API routes) reinforced good architecture: the UI stays fast and reactive, while critical data remains secure and authoritative on the server.
+
+- Schema validation is essential when AI is in the loop.
+Using Zod to validate Gemini inputs and outputs helped prevent malformed responses and unsafe assumptions. AI is powerful, but only when wrapped in strict contracts.
+
+- Voice changes engagement dramatically.
+Integrating ElevenLabs showed me that multimodal feedback (text + voice) increases clarity and retention. Spoken advice feels like coaching, not instruction — especially important for younger users.
+
+- Time-based mechanics teach consequences naturally.
+Using a compressed “month” (5 minutes) demonstrated how deadlines, planning, and missed payments can be taught without punishment — just cause-and-effect.
+
+- Simple insights beat complex dashboards.
+For beginners, a few clear signals (balance up/down, task paid/missed, growth/shrink) are more effective than charts and tables. This reinforced the value of opinionated UI design.
 
 ---
 
