@@ -1,7 +1,10 @@
 # Penny 💸  
 *Penny is an AI-powered bank account game designed to boost financial literacy from a young age by letting young learners safely play around with a virtual bank account—learning saving, spending, and real-world money decisions through personalized guidance and voice feedback. 💸*
 
+---
+
 Check it out: https://penny-psi.vercel.app/
+
 ---
 
 ## 🚀 Inspiration
