@@ -3,8 +3,8 @@
 
 ---
 
-Check it out: https://penny-psi.vercel.app/
-Demo: https://www.youtube.com/watch?v=MwG0r4ay0E0
+- Try it out: https://penny-psi.vercel.app/
+- Demo: https://www.youtube.com/watch?v=MwG0r4ay0E0
 
 ---
 
